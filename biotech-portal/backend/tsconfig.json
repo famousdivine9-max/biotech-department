@@ -7,14 +7,17 @@
     "rootDir": "./src",
     "strict": false,
     "noImplicitAny": false,
+    "strictNullChecks": false,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true
+    "declaration": false,
+    "sourceMap": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "allowJs": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
