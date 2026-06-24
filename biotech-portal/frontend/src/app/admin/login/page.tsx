@@ -8,7 +8,6 @@ import { z } from 'zod';
 import toast from 'react-hot-toast';
 import { Eye, EyeOff, Shield, Loader2 } from 'lucide-react';
 import { api, getErrorMessage } from '@/lib/api';
-import { useAuthStore } from '@/lib/store';
 import Link from 'next/link';
 
 const schema = z.object({
@@ -20,7 +19,6 @@ type FormData = z.infer<typeof schema>;
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const login = useAuthStore((s) => s.login);
   const [showPassword, setShowPassword] = useState(false);
 
   const {
@@ -32,9 +30,16 @@ export default function AdminLoginPage() {
   const onSubmit = async (data: FormData) => {
     try {
       const res = await api.auth.adminLogin(data.email, data.password);
-      login(res.data.user, res.data.token);
+      const { user, token } = res.data;
+      
+      // Save to localStorage directly
+      localStorage.setItem('biotech_token', token);
+      localStorage.setItem('biotech_user', JSON.stringify(user));
+      
       toast.success('Welcome back!');
-      router.push('/admin/dashboard');
+      
+      // Hard redirect instead of router.push
+      window.location.href = '/admin/dashboard';
     } catch (err) {
       toast.error(getErrorMessage(err));
     }
@@ -43,7 +48,6 @@ export default function AdminLoginPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-900 via-primary-800 to-secondary-800 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-2xl shadow-lg mb-4">
             <Shield className="w-8 h-8 text-primary-700" />
@@ -53,7 +57,6 @@ export default function AdminLoginPage() {
           <p className="text-primary-300 text-sm">Federal University Lokoja</p>
         </div>
 
-        {/* Card */}
         <div className="bg-white rounded-2xl shadow-2xl p-8">
           <h2 className="text-xl font-semibold text-gray-800 mb-6">Sign In</h2>
 
