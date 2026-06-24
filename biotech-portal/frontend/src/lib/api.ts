@@ -1,4 +1,4 @@
-import axios, { AxiosError } from 'axios';
+import axios from 'axios';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
@@ -18,18 +18,22 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle 401 globally
+// Handle 401 - but NOT on login pages
 apiClient.interceptors.response.use(
   (response) => response,
-  (error: AxiosError) => {
-    if (error.response?.status === 401) {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('biotech_token');
-        localStorage.removeItem('biotech_user');
+  (error) => {
+    if (typeof window !== 'undefined') {
+      if (error.response?.status === 401) {
         const path = window.location.pathname;
-        if (path.startsWith('/admin') || path.startsWith('/lecturer')) {
-          const loginPath = path.startsWith('/admin') ? '/admin/login' : '/lecturer/login';
-          window.location.href = loginPath;
+        const isLoginPage = path.includes('/login') || path.includes('/register');
+        if (!isLoginPage) {
+          localStorage.removeItem('biotech_token');
+          localStorage.removeItem('biotech_user');
+          if (path.startsWith('/admin')) {
+            window.location.href = '/admin/login';
+          } else if (path.startsWith('/lecturer')) {
+            window.location.href = '/lecturer/login';
+          }
         }
       }
     }
@@ -44,7 +48,6 @@ export const getErrorMessage = (error: unknown): string => {
   return 'An unexpected error occurred';
 };
 
-// Namespaced API helpers
 export const api = {
   auth: {
     adminLogin: (email: string, password: string) =>
