@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Shield, LayoutDashboard, Users, FileText, DollarSign, Receipt, Megaphone, BookOpen, Settings, LogOut, Menu, ChevronRight } from 'lucide-react';
-import { useAuthStore } from '@/lib/store';
 
 const NAV_ITEMS = [
   { href: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -22,29 +21,37 @@ const PUBLIC_PATHS = ['/admin/login'];
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, isAuthenticated, logout } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [user, setUser] = useState<any>(null);
 
   const isPublicPath = PUBLIC_PATHS.some(p => pathname.startsWith(p));
 
   useEffect(() => {
-    if (!isPublicPath && !isAuthenticated) {
-      router.push('/admin/login');
+    if (!isPublicPath) {
+      const token = localStorage.getItem('biotech_token');
+      const userStr = localStorage.getItem('biotech_user');
+      if (!token) {
+        router.push('/admin/login');
+      } else if (userStr) {
+        setUser(JSON.parse(userStr));
+      }
     }
-  }, [isAuthenticated, isPublicPath]);
+  }, [isPublicPath, pathname]);
 
   if (isPublicPath) {
     return <>{children}</>;
   }
 
-  if (!isAuthenticated) return null;
-
-  const breadcrumb = NAV_ITEMS.find((n) => pathname.startsWith(n.href))?.label || '';
+  const token = typeof window !== 'undefined' ? localStorage.getItem('biotech_token') : null;
+  if (!token) return null;
 
   const handleLogout = () => {
-    logout();
+    localStorage.removeItem('biotech_token');
+    localStorage.removeItem('biotech_user');
     router.push('/admin/login');
   };
+
+  const breadcrumb = NAV_ITEMS.find((n) => pathname.startsWith(n.href))?.label || '';
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -93,8 +100,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-800 truncate">{user?.full_name}</p>
-              <p className="text-xs text-gray-400 truncate">{user?.email}</p>
+              <p className="text-sm font-medium text-gray-800 truncate">{user?.full_name || 'Admin'}</p>
+              <p className="text-xs text-gray-400 truncate">{user?.email || ''}</p>
             </div>
           </div>
           <button onClick={handleLogout}
