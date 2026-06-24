@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -18,7 +17,6 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 export default function AdminLoginPage() {
-  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
 
   const {
@@ -30,15 +28,12 @@ export default function AdminLoginPage() {
   const onSubmit = async (data: FormData) => {
     try {
       const res = await api.auth.adminLogin(data.email, data.password);
-      const { user, token } = res.data;
-      
-      // Save to localStorage directly
+      const { user, token } = res.data.data;
+
       localStorage.setItem('biotech_token', token);
       localStorage.setItem('biotech_user', JSON.stringify(user));
-      
+
       toast.success('Welcome back!');
-      
-      // Hard redirect instead of router.push
       window.location.href = '/admin/dashboard';
     } catch (err) {
       toast.error(getErrorMessage(err));
@@ -67,7 +62,7 @@ export default function AdminLoginPage() {
                 {...register('email')}
                 type="email"
                 className="input"
-                placeholder="admin@biotech.ful.edu.ng"
+                placeholder="admin@biotechfulokoja.edu.ng"
                 autoComplete="email"
               />
               {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email.message}</p>}
