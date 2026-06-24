@@ -3,138 +3,123 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import {
-  LayoutDashboard, Users, FileText, CreditCard, Settings,
-  LogOut, Menu, X, Bell, ChevronRight, Megaphone, GraduationCap,
-  BookOpen, Shield
-} from 'lucide-react';
+import { Shield, LayoutDashboard, Users, FileText, DollarSign, Receipt, Megaphone, BookOpen, Settings, LogOut, Menu, ChevronRight } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 
-const navItems = [
-  { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/admin/lecturers', label: 'Lecturers', icon: Users },
-  { href: '/admin/materials', label: 'Materials', icon: BookOpen },
-  { href: '/admin/payments', label: 'Payments', icon: CreditCard },
-  { href: '/admin/receipts', label: 'Receipts', icon: FileText },
-  { href: '/admin/announcements', label: 'Announcements', icon: Megaphone },
-  { href: '/admin/academic', label: 'Academic Setup', icon: GraduationCap },
-  { href: '/admin/settings', label: 'Site Settings', icon: Settings },
+const NAV_ITEMS = [
+  { href: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { href: '/admin/lecturers', icon: Users, label: 'Lecturers' },
+  { href: '/admin/materials', icon: FileText, label: 'Materials' },
+  { href: '/admin/payments', icon: DollarSign, label: 'Payments' },
+  { href: '/admin/receipts', icon: Receipt, label: 'Receipts' },
+  { href: '/admin/announcements', icon: Megaphone, label: 'Announcements' },
+  { href: '/admin/academic', icon: BookOpen, label: 'Academic Setup' },
+  { href: '/admin/settings', icon: Settings, label: 'Settings' },
 ];
+
+const PUBLIC_PATHS = ['/admin/login'];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, isAuthenticated, logout, initialize } = useAuthStore();
+  const { user, isAuthenticated, logout } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  useEffect(() => {
-    initialize();
-  }, [initialize]);
+  const isPublicPath = PUBLIC_PATHS.some(p => pathname.startsWith(p));
 
   useEffect(() => {
-    if (pathname === '/admin/login') return;
-    if (!isAuthenticated || !user || !['admin', 'super_admin'].includes(user.role)) {
-      router.replace('/admin/login');
+    if (!isPublicPath && !isAuthenticated) {
+      router.push('/admin/login');
     }
-  }, [isAuthenticated, user, pathname, router]);
+  }, [isAuthenticated, isPublicPath]);
+
+  if (isPublicPath) {
+    return <>{children}</>;
+  }
+
+  if (!isAuthenticated) return null;
+
+  const breadcrumb = NAV_ITEMS.find((n) => pathname.startsWith(n.href))?.label || '';
 
   const handleLogout = () => {
     logout();
-    router.replace('/admin/login');
+    router.push('/admin/login');
   };
 
-  if (pathname === '/admin/login') return <>{children}</>;
-  if (!isAuthenticated || !user) return null;
-
   return (
-    <div className="flex h-screen bg-gray-50">
-      {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-gray-900 flex flex-col transition-transform duration-300 lg:translate-x-0 lg:relative lg:flex ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        {/* Logo */}
-        <div className="p-5 border-b border-gray-800">
+    <div className="min-h-screen bg-background flex">
+      {sidebarOpen && (
+        <div className="fixed inset-0 bg-black/50 z-20 lg:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
+
+      <aside className={`
+        fixed top-0 left-0 h-full w-64 bg-white border-r border-gray-200 z-30 flex flex-col
+        transition-transform duration-300
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        lg:translate-x-0 lg:static lg:z-auto
+      `}>
+        <div className="p-4 border-b border-gray-100">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-primary-700 rounded-lg flex items-center justify-center">
-              <Shield className="text-white" size={18} />
+            <div className="w-10 h-10 bg-primary-600 rounded-xl flex items-center justify-center">
+              <Shield className="w-5 h-5 text-white" />
             </div>
             <div>
-              <p className="text-white font-bold text-sm leading-tight">Admin Portal</p>
-              <p className="text-gray-400 text-xs">Biotechnology Dept.</p>
+              <p className="font-semibold text-gray-800 text-sm">Admin Portal</p>
+              <p className="text-xs text-gray-500">Biotechnology · FUL</p>
             </div>
           </div>
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 py-4 overflow-y-auto">
-          {navItems.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+          {NAV_ITEMS.map((item) => {
+            const active = pathname.startsWith(item.href);
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setSidebarOpen(false)}
-                className={`flex items-center gap-3 px-5 py-3 text-sm font-medium transition-all ${
-                  isActive
-                    ? 'bg-primary-700 text-white border-r-2 border-accent'
-                    : 'text-gray-400 hover:text-white hover:bg-gray-800'
-                }`}
-              >
-                <item.icon size={17} />
+              <Link key={item.href} href={item.href} onClick={() => setSidebarOpen(false)}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-sm font-medium ${
+                  active ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-100'
+                }`}>
+                <item.icon className={`w-4 h-4 ${active ? 'text-primary-600' : ''}`} />
                 {item.label}
-                {isActive && <ChevronRight size={14} className="ml-auto" />}
               </Link>
             );
           })}
         </nav>
 
-        {/* User */}
-        <div className="p-4 border-t border-gray-800">
+        <div className="p-4 border-t border-gray-100">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 rounded-full bg-primary-700 flex items-center justify-center">
-              <span className="text-white font-bold text-sm">{user.name.charAt(0).toUpperCase()}</span>
+            <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center">
+              <span className="text-primary-700 font-semibold text-sm">
+                {user?.full_name?.charAt(0) || 'A'}
+              </span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-white text-sm font-medium truncate">{user.name}</p>
-              <p className="text-gray-400 text-xs">{user.role.replace('_', ' ')}</p>
+              <p className="text-sm font-medium text-gray-800 truncate">{user?.full_name}</p>
+              <p className="text-xs text-gray-400 truncate">{user?.email}</p>
             </div>
           </div>
-          <button onClick={handleLogout} className="flex items-center gap-2 text-gray-400 hover:text-red-400 text-sm transition-colors w-full">
-            <LogOut size={15} /> Sign Out
+          <button onClick={handleLogout}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-red-600 hover:bg-red-50 transition-colors text-sm">
+            <LogOut className="w-4 h-4" /> Sign Out
           </button>
         </div>
       </aside>
 
-      {/* Overlay */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
-      )}
-
-      {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Top bar */}
-        <header className="bg-white border-b border-gray-200 px-4 py-3.5 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 rounded-lg hover:bg-gray-100 text-gray-500">
-              <Menu size={20} />
-            </button>
-            <nav className="hidden sm:flex items-center text-sm text-gray-500">
-              <Link href="/admin/dashboard" className="hover:text-primary-700">Admin</Link>
-              <ChevronRight size={14} className="mx-1" />
-              <span className="text-gray-900 font-medium capitalize">
-                {pathname.split('/').filter(Boolean).slice(1).join(' › ')}
-              </span>
-            </nav>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link href="/" target="_blank" className="text-xs text-gray-400 hover:text-primary-700 transition-colors">
-              View Site
-            </Link>
+      <div className="flex-1 flex flex-col min-w-0">
+        <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3 lg:px-6">
+          <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 rounded-lg hover:bg-gray-100">
+            <Menu className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-1 text-sm text-gray-500">
+            <span>Admin</span>
+            {breadcrumb && (
+              <>
+                <ChevronRight className="w-4 h-4" />
+                <span className="text-gray-800 font-medium">{breadcrumb}</span>
+              </>
+            )}
           </div>
         </header>
-
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          {children}
-        </main>
+        <main className="flex-1 p-4 lg:p-6 overflow-auto">{children}</main>
       </div>
     </div>
   );
