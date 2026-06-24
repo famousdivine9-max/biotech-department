@@ -13,7 +13,7 @@ import Link from 'next/link';
 const schema = z.object({
   full_name: z.string().min(3, 'Enter your full name'),
   email: z.string().email('Enter a valid email'),
-  phone_number: z.string().min(10, 'Enter a valid phone number'),
+  phone: z.string().min(10, 'Enter a valid phone number'),
   staff_id: z.string().min(2, 'Enter your staff ID'),
   department: z.string().min(2, 'Enter your department'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
@@ -100,8 +100,8 @@ export default function LecturerRegisterPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="label">Phone Number</label>
-                <input {...register('phone_number')} className="input" placeholder="08012345678" />
-                {errors.phone_number && <p className="text-red-500 text-xs mt-1">{errors.phone_number.message}</p>}
+                <input {...register('phone')} className="input" placeholder="08012345678" />
+                {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone.message}</p>}
               </div>
               <div>
                 <label className="label">Department</label>
@@ -113,14 +113,8 @@ export default function LecturerRegisterPage() {
             <div>
               <label className="label">Password</label>
               <div className="relative">
-                <input
-                  {...register('password')}
-                  type={showPass ? 'text' : 'password'}
-                  className="input pr-10"
-                  placeholder="At least 8 characters"
-                />
-                <button type="button" onClick={() => setShowPass(!showPass)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                <input {...register('password')} type={showPass ? 'text' : 'password'} className="input pr-10" placeholder="At least 8 characters" />
+                <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
                   {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
@@ -130,14 +124,8 @@ export default function LecturerRegisterPage() {
             <div>
               <label className="label">Confirm Password</label>
               <div className="relative">
-                <input
-                  {...register('confirm_password')}
-                  type={showConfirm ? 'text' : 'password'}
-                  className="input pr-10"
-                  placeholder="Repeat password"
-                />
-                <button type="button" onClick={() => setShowConfirm(!showConfirm)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                <input {...register('confirm_password')} type={showConfirm ? 'text' : 'password'} className="input pr-10" placeholder="Repeat password" />
+                <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
                   {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
