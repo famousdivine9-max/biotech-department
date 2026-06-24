@@ -16,64 +16,63 @@ const NAV_ITEMS = [
   { href: '/admin/settings', icon: Settings, label: 'Settings' },
 ];
 
-const PUBLIC_PATHS = ['/admin/login'];
-
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [user, setUser] = useState<any>(null);
-  const [mounted, setMounted] = useState(false);
+  const [userName, setUserName] = useState('Admin');
+  const [userEmail, setUserEmail] = useState('');
+  const [ready, setReady] = useState(false);
 
-  const isPublicPath = PUBLIC_PATHS.some(p => pathname.startsWith(p));
+  const isLoginPage = pathname.includes('login');
 
   useEffect(() => {
-    setMounted(true);
-    if (!isPublicPath) {
-      const token = localStorage.getItem('biotech_token');
-      const userStr = localStorage.getItem('biotech_user');
-      if (!token) {
-        router.push('/admin/login');
-      } else if (userStr) {
-        try {
-          setUser(JSON.parse(userStr));
-        } catch (e) {}
-      }
+    if (isLoginPage) {
+      setReady(true);
+      return;
     }
-  }, [isPublicPath, pathname]);
+    const token = localStorage.getItem('biotech_token');
+    if (!token) {
+      router.push('/admin/login');
+      return;
+    }
+    try {
+      const userStr = localStorage.getItem('biotech_user');
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        setUserName(user.name || user.full_name || 'Admin');
+        setUserEmail(user.email || '');
+      }
+    } catch (e) {}
+    setReady(true);
+  }, [pathname]);
 
-  if (!mounted) return null;
+  if (!ready) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
 
-  if (isPublicPath) {
-    return <>{children}</>;
-  }
-
-  const token = localStorage.getItem('biotech_token');
-  if (!token) return null;
+  if (isLoginPage) return <>{children}</>;
 
   const handleLogout = () => {
     localStorage.removeItem('biotech_token');
     localStorage.removeItem('biotech_user');
-    router.push('/admin/login');
+    window.location.href = '/admin/login';
   };
 
   const breadcrumb = NAV_ITEMS.find((n) => pathname.startsWith(n.href))?.label || '';
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="min-h-screen bg-gray-50 flex">
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/50 z-20 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      <aside className={`
-        fixed top-0 left-0 h-full w-64 bg-white border-r border-gray-200 z-30 flex flex-col
-        transition-transform duration-300
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        lg:translate-x-0 lg:static lg:z-auto
-      `}>
+      <aside className={`fixed top-0 left-0 h-full w-64 bg-white border-r border-gray-200 z-30 flex flex-col transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static lg:z-auto`}>
         <div className="p-4 border-b border-gray-100">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-primary-600 rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 bg-green-700 rounded-xl flex items-center justify-center">
               <Shield className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -88,10 +87,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             const active = pathname.startsWith(item.href);
             return (
               <Link key={item.href} href={item.href} onClick={() => setSidebarOpen(false)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-sm font-medium ${
-                  active ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-100'
-                }`}>
-                <item.icon className={`w-4 h-4 ${active ? 'text-primary-600' : ''}`} />
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-sm font-medium ${active ? 'bg-green-50 text-green-700' : 'text-gray-600 hover:bg-gray-100'}`}>
+                <item.icon className="w-4 h-4" />
                 {item.label}
               </Link>
             );
@@ -100,18 +97,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
         <div className="p-4 border-t border-gray-100">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center">
-              <span className="text-primary-700 font-semibold text-sm">
-                {user?.full_name?.charAt(0) || 'A'}
-              </span>
+            <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+              <span className="text-green-700 font-semibold text-sm">{userName.charAt(0)}</span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-800 truncate">{user?.full_name || 'Admin'}</p>
-              <p className="text-xs text-gray-400 truncate">{user?.email || ''}</p>
+              <p className="text-sm font-medium text-gray-800 truncate">{userName}</p>
+              <p className="text-xs text-gray-400 truncate">{userEmail}</p>
             </div>
           </div>
-          <button onClick={handleLogout}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-red-600 hover:bg-red-50 transition-colors text-sm">
+          <button onClick={handleLogout} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-red-600 hover:bg-red-50 transition-colors text-sm">
             <LogOut className="w-4 h-4" /> Sign Out
           </button>
         </div>
