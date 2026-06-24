@@ -23,26 +23,32 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [mounted, setMounted] = useState(false);
 
   const isPublicPath = PUBLIC_PATHS.some(p => pathname.startsWith(p));
 
   useEffect(() => {
+    setMounted(true);
     if (!isPublicPath) {
       const token = localStorage.getItem('biotech_token');
       const userStr = localStorage.getItem('biotech_user');
       if (!token) {
         router.push('/admin/login');
       } else if (userStr) {
-        setUser(JSON.parse(userStr));
+        try {
+          setUser(JSON.parse(userStr));
+        } catch (e) {}
       }
     }
   }, [isPublicPath, pathname]);
+
+  if (!mounted) return null;
 
   if (isPublicPath) {
     return <>{children}</>;
   }
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('biotech_token') : null;
+  const token = localStorage.getItem('biotech_token');
   if (!token) return null;
 
   const handleLogout = () => {
