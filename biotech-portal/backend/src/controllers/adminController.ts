@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import pool from '../config/database';
-import { AuthRequest } from '../middleware/auth';
+
 import { uploadImageToCloudinary } from '../services/cloudinaryService';
 
 // ============================================================
@@ -128,7 +128,7 @@ export const getAllLecturers = async (req: Request, res: Response): Promise<void
   }
 };
 
-export const updateLecturerStatus = async (req: AuthRequest, res: Response): Promise<void> => {
+export const updateLecturerStatus = async (req: any, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     const { status, reason } = req.body;
@@ -147,12 +147,12 @@ export const updateLecturerStatus = async (req: AuthRequest, res: Response): Pro
 
     await pool.query(
       `UPDATE lecturers SET status = ?, approved_by = ?, approved_at = NOW() WHERE id = ?`,
-      [status, req.user!.id, id]
+      [status, (req as any).user!.id, id]
     );
 
     await pool.query(
       'INSERT INTO lecturer_approvals (lecturer_id, admin_id, action, reason) VALUES (?, ?, ?, ?)',
-      [id, req.user!.id, status, reason || null]
+      [id, (req as any).user!.id, status, reason || null]
     );
 
     res.json({ success: true, message: `Lecturer ${status} successfully.` });
@@ -162,7 +162,7 @@ export const updateLecturerStatus = async (req: AuthRequest, res: Response): Pro
   }
 };
 
-export const resetLecturerPassword = async (req: AuthRequest, res: Response): Promise<void> => {
+export const resetLecturerPassword = async (req: any, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     const { new_password } = req.body;
@@ -177,7 +177,7 @@ export const resetLecturerPassword = async (req: AuthRequest, res: Response): Pr
 
     await pool.query(
       `INSERT INTO activity_logs (actor_type, actor_id, actor_name, action, description) VALUES ('admin', ?, ?, 'reset_password', ?)`,
-      [req.user!.id, req.user!.name, `Reset password for lecturer ID ${id}`]
+      [(req as any).user!.id, (req as any).user!.name, `Reset password for lecturer ID ${id}`]
     );
 
     res.json({ success: true, message: 'Lecturer password reset successfully.' });
@@ -258,14 +258,14 @@ export const getSettings = async (_req: Request, res: Response): Promise<void> =
   }
 };
 
-export const updateSetting = async (req: AuthRequest, res: Response): Promise<void> => {
+export const updateSetting = async (req: any, res: Response): Promise<void> => {
   try {
     const { key } = req.params;
     const { value } = req.body;
 
     await pool.query(
       'UPDATE settings SET setting_value = ?, updated_by = ? WHERE setting_key = ?',
-      [value, req.user!.id, key]
+      [value, (req as any).user!.id, key]
     );
 
     res.json({ success: true, message: 'Setting updated.' });
@@ -274,7 +274,7 @@ export const updateSetting = async (req: AuthRequest, res: Response): Promise<vo
   }
 };
 
-export const updateBulkSettings = async (req: AuthRequest, res: Response): Promise<void> => {
+export const updateBulkSettings = async (req: any, res: Response): Promise<void> => {
   try {
     const { settings } = req.body;
 
@@ -286,7 +286,7 @@ export const updateBulkSettings = async (req: AuthRequest, res: Response): Promi
     for (const [key, value] of Object.entries(settings)) {
       await pool.query(
         'UPDATE settings SET setting_value = ?, updated_by = ? WHERE setting_key = ?',
-        [value, req.user!.id, key]
+        [value, (req as any).user!.id, key]
       );
     }
 
@@ -297,9 +297,9 @@ export const updateBulkSettings = async (req: AuthRequest, res: Response): Promi
   }
 };
 
-export const uploadBrandingImage = async (req: AuthRequest, res: Response): Promise<void> => {
+export const uploadBrandingImage = async (req: any, res: Response): Promise<void> => {
   try {
-    if (!req.file) {
+    if (!(req as any).file) {
       res.status(400).json({ success: false, message: 'Image file is required.' });
       return;
     }
@@ -313,14 +313,14 @@ export const uploadBrandingImage = async (req: AuthRequest, res: Response): Prom
     }
 
     const { url } = await uploadImageToCloudinary(
-      req.file.buffer,
-      req.file.originalname,
+      (req as any).file.buffer,
+      (req as any).file.originalname,
       'biotech-portal/branding'
     );
 
     await pool.query(
       'UPDATE settings SET setting_value = ?, updated_by = ? WHERE setting_key = ?',
-      [url, req.user!.id, type]
+      [url, (req as any).user!.id, type]
     );
 
     res.json({ success: true, message: 'Image uploaded successfully.', data: { url } });
@@ -352,7 +352,7 @@ export const getAcademicData = async (_req: Request, res: Response): Promise<voi
   }
 };
 
-export const createAcademicSession = async (req: AuthRequest, res: Response): Promise<void> => {
+export const createAcademicSession = async (req: any, res: Response): Promise<void> => {
   try {
     const { session_name, is_current } = req.body;
 
@@ -389,7 +389,7 @@ export const createCourse = async (req: Request, res: Response): Promise<void> =
 // ============================================================
 // ANNOUNCEMENTS
 // ============================================================
-export const createAnnouncement = async (req: AuthRequest, res: Response): Promise<void> => {
+export const createAnnouncement = async (req: any, res: Response): Promise<void> => {
   try {
     const { title, content, is_published, expires_at } = req.body;
 
@@ -399,7 +399,7 @@ export const createAnnouncement = async (req: AuthRequest, res: Response): Promi
       [
         title.trim(),
         content.trim(),
-        req.user!.id,
+        (req as any).user!.id,
         is_published ? 1 : 0,
         is_published ? new Date() : null,
         expires_at || null,

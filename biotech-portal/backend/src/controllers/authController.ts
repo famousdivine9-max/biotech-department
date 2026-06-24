@@ -299,9 +299,9 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
 // ============================================================
 // GET CURRENT USER PROFILE
 // ============================================================
-export const getProfile = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getProfile = async (req: any, res: Response): Promise<void> => {
   try {
-    const user = req.user!;
+    const user = (req as any).user!;
     let profile;
 
     if (user.role === 'lecturer') {

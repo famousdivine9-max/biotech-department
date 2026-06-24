@@ -6,23 +6,23 @@ import { AuthRequest } from '../middleware/auth';
 // ============================================================
 // UPLOAD MATERIAL (Lecturer)
 // ============================================================
-export const uploadMaterial = async (req: AuthRequest, res: Response): Promise<void> => {
+export const uploadMaterial = async (req: any, res: Response): Promise<void> => {
   try {
-    if (!req.file) {
+    if (!(req as any).file) {
       res.status(400).json({ success: false, message: 'PDF file is required.' });
       return;
     }
 
     // Validate file type
     const allowedMimeTypes = ['application/pdf'];
-    if (!allowedMimeTypes.includes(req.file.mimetype)) {
+    if (!allowedMimeTypes.includes((req as any).file.mimetype)) {
       res.status(400).json({ success: false, message: 'Only PDF files are allowed.' });
       return;
     }
 
     // Validate file size (50MB)
     const maxSize = (parseInt(process.env.MAX_FILE_SIZE_MB || '50')) * 1024 * 1024;
-    if (req.file.size > maxSize) {
+    if ((req as any).file.size > maxSize) {
       res.status(400).json({ success: false, message: `File size must not exceed ${process.env.MAX_FILE_SIZE_MB || 50}MB.` });
       return;
     }
@@ -36,8 +36,8 @@ export const uploadMaterial = async (req: AuthRequest, res: Response): Promise<v
 
     // Upload to Cloudinary
     const { url, public_id } = await uploadToCloudinary(
-      req.file.buffer,
-      req.file.originalname,
+      (req as any).file.buffer,
+      (req as any).file.originalname,
       'biotech-portal/materials',
       'raw'
     );
@@ -54,7 +54,7 @@ export const uploadMaterial = async (req: AuthRequest, res: Response): Promise<v
         file_url, file_public_id, file_size, file_name)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        req.user!.id,
+        (req as any).user!.id,
         title.trim(),
         description?.trim() || null,
         course_code.toUpperCase().trim(),
@@ -64,8 +64,8 @@ export const uploadMaterial = async (req: AuthRequest, res: Response): Promise<v
         sessionRows.length ? sessionRows[0].id : null,
         url,
         public_id,
-        req.file.size,
-        req.file.originalname,
+        (req as any).file.size,
+        (req as any).file.originalname,
       ]
     );
 
@@ -73,7 +73,7 @@ export const uploadMaterial = async (req: AuthRequest, res: Response): Promise<v
     await pool.query(
       `INSERT INTO activity_logs (actor_type, actor_id, actor_name, action, description)
        VALUES ('lecturer', ?, ?, 'material_upload', ?)`,
-      [req.user!.id, req.user!.name, `Uploaded material: ${title} (${course_code})`]
+      [(req as any).user!.id, (req as any).user!.name, `Uploaded material: ${title} (${course_code})`]
     );
 
     res.status(201).json({
@@ -185,10 +185,10 @@ export const trackDownload = async (req: Request, res: Response): Promise<void> 
 // ============================================================
 // GET LECTURER MATERIALS
 // ============================================================
-export const getLecturerMaterials = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getLecturerMaterials = async (req: any, res: Response): Promise<void> => {
   try {
     const { search, course_code, page = '1', limit = '20' } = req.query;
-    const lecturerId = req.user!.id;
+    const lecturerId = (req as any).user!.id;
 
     let query = `
       SELECT m.*, lv.name AS level_name, s.name AS semester_name, ac.session_name
@@ -235,14 +235,14 @@ export const getLecturerMaterials = async (req: AuthRequest, res: Response): Pro
 // ============================================================
 // UPDATE MATERIAL
 // ============================================================
-export const updateMaterial = async (req: AuthRequest, res: Response): Promise<void> => {
+export const updateMaterial = async (req: any, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     const { title, description, course_code, level, semester, academic_session } = req.body;
 
     const [rows]: any = await pool.query(
       'SELECT * FROM materials WHERE id = ? AND lecturer_id = ?',
-      [id, req.user!.id]
+      [id, (req as any).user!.id]
     );
 
     if (!rows.length) {
@@ -257,8 +257,8 @@ export const updateMaterial = async (req: AuthRequest, res: Response): Promise<v
     let fileSize = material.file_size;
 
     // If new file uploaded, replace old one
-    if (req.file) {
-      if (req.file.mimetype !== 'application/pdf') {
+    if ((req as any).file) {
+      if ((req as any).file.mimetype !== 'application/pdf') {
         res.status(400).json({ success: false, message: 'Only PDF files are allowed.' });
         return;
       }
@@ -267,11 +267,11 @@ export const updateMaterial = async (req: AuthRequest, res: Response): Promise<v
         try { await deleteFromCloudinary(filePublicId, 'raw'); } catch (e) { /* non-fatal */ }
       }
 
-      const uploaded = await uploadToCloudinary(req.file.buffer, req.file.originalname, 'biotech-portal/materials', 'raw');
+      const uploaded = await uploadToCloudinary((req as any).file.buffer, (req as any).file.originalname, 'biotech-portal/materials', 'raw');
       fileUrl = uploaded.url;
       filePublicId = uploaded.public_id;
-      fileName = req.file.originalname;
-      fileSize = req.file.size;
+      fileName = (req as any).file.originalname;
+      fileSize = (req as any).file.size;
     }
 
     const [levelRows]: any = level ? await pool.query('SELECT id FROM levels WHERE name = ?', [level]) : [[]];
@@ -311,10 +311,10 @@ export const updateMaterial = async (req: AuthRequest, res: Response): Promise<v
 // ============================================================
 // DELETE MATERIAL
 // ============================================================
-export const deleteMaterial = async (req: AuthRequest, res: Response): Promise<void> => {
+export const deleteMaterial = async (req: any, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const user = req.user!;
+    const user = (req as any).user!;
 
     let query = 'SELECT * FROM materials WHERE id = ?';
     const params: any[] = [id];
