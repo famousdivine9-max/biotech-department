@@ -1,222 +1,157 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, BookOpen, Layers, Calendar, RefreshCw } from 'lucide-react';
-import { api, getErrorMessage } from '@/lib/api';
-import toast from 'react-hot-toast';
 
-interface AcademicData {
-  sessions: { id: number; session_name: string; is_active: boolean }[];
-  levels: { id: number; level_name: string; level_number: number }[];
-  semesters: { id: number; semester_name: string }[];
-  courses: { id: number; course_code: string; course_title: string; level_name: string; semester_name: string }[];
+const API = process.env.NEXT_PUBLIC_API_URL || 'https://biotech-portal-backend.onrender.com/api';
+
+function getToken() {
+  return typeof window !== 'undefined' ? localStorage.getItem('biotech_token') || '' : '';
 }
 
 export default function AdminAcademicPage() {
-  const [data, setData] = useState<AcademicData | null>(null);
+  const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-
-  // New Session
   const [newSession, setNewSession] = useState('');
-  const [addingSession, setAddingSession] = useState(false);
-
-  // New Course
   const [courseForm, setCourseForm] = useState({ course_code: '', course_title: '', level_id: '', semester_id: '' });
-  const [addingCourse, setAddingCourse] = useState(false);
+  const [msg, setMsg] = useState('');
 
-  const fetchData = async () => {
+  async function fetchData() {
     setLoading(true);
     try {
-      const res = await api.admin.getAcademicData();
-      setData(res.data);
-    } catch (err) {
-      toast.error(getErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  };
+      const res = await fetch(API + '/admin/academic', {
+        headers: { Authorization: 'Bearer ' + getToken() }
+      });
+      const d = await res.json();
+      setData(d.data || d);
+    } catch (e) {}
+    setLoading(false);
+  }
 
   useEffect(() => { fetchData(); }, []);
 
-  const handleAddSession = async () => {
+  async function handleAddSession() {
     if (!newSession.trim()) return;
-    setAddingSession(true);
     try {
-      await api.admin.createAcademicSession({ session_name: newSession });
-      toast.success('Session created');
+      await fetch(API + '/admin/academic/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getToken() },
+        body: JSON.stringify({ session_name: newSession })
+      });
+      setMsg('Session created!');
       setNewSession('');
       fetchData();
-    } catch (err) {
-      toast.error(getErrorMessage(err));
-    } finally {
-      setAddingSession(false);
+    } catch (e) {
+      setMsg('Failed to create session');
     }
-  };
+  }
 
-  const handleAddCourse = async () => {
+  async function handleAddCourse() {
     if (!courseForm.course_code || !courseForm.course_title || !courseForm.level_id || !courseForm.semester_id) {
-      toast.error('Fill all course fields');
+      setMsg('Fill all course fields');
       return;
     }
-    setAddingCourse(true);
     try {
-      await api.admin.createCourse(courseForm);
-      toast.success('Course created');
+      await fetch(API + '/admin/academic/courses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getToken() },
+        body: JSON.stringify(courseForm)
+      });
+      setMsg('Course created!');
       setCourseForm({ course_code: '', course_title: '', level_id: '', semester_id: '' });
       fetchData();
-    } catch (err) {
-      toast.error(getErrorMessage(err));
-    } finally {
-      setAddingCourse(false);
+    } catch (e) {
+      setMsg('Failed to create course');
     }
-  };
+  }
 
-  if (loading) return (
-    <div className="flex justify-center py-12">
-      <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
-    </div>
-  );
+  const inputStyle = { width: '100%', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', boxSizing: 'border-box' as const, marginBottom: '8px' };
+  const btnStyle = { background: '#15803d', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 20px', cursor: 'pointer', fontSize: '14px' };
+  const cardStyle = { background: 'white', borderRadius: '16px', padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '24px' };
+
+  if (loading) return <div style={{ textAlign: 'center', padding: '48px', color: '#9ca3af' }}>Loading...</div>;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-800">Academic Setup</h2>
-        <button onClick={fetchData} className="btn-secondary flex items-center gap-2">
-          <RefreshCw className="w-4 h-4" />
-        </button>
-      </div>
+    <div>
+      {msg && <p style={{ color: '#15803d', background: '#f0fdf4', padding: '12px', borderRadius: '8px', marginBottom: '16px' }}>{msg}</p>}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Academic Sessions */}
-        <div className="card">
-          <div className="flex items-center gap-2 mb-4">
-            <Calendar className="w-5 h-5 text-primary-600" />
-            <h3 className="font-semibold text-gray-800">Academic Sessions</h3>
-          </div>
-          <div className="flex gap-2 mb-4">
-            <input
-              className="input flex-1"
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
+
+        {/* Sessions */}
+        <div style={cardStyle}>
+          <h3 style={{ fontWeight: '600', marginBottom: '16px', color: '#1f2937' }}>Academic Sessions</h3>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+            <input value={newSession} onChange={(e) => setNewSession(e.target.value)}
               placeholder="e.g. 2024/2025"
-              value={newSession}
-              onChange={(e) => setNewSession(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddSession()}
-            />
-            <button onClick={handleAddSession} disabled={addingSession} className="btn-primary px-4">
-              <Plus className="w-4 h-4" />
-            </button>
+              style={{ flex: 1, border: '1px solid #e5e7eb', borderRadius: '8px', padding: '8px 12px', fontSize: '14px' }} />
+            <button onClick={handleAddSession} style={btnStyle}>Add</button>
           </div>
-          <div className="space-y-2 max-h-60 overflow-y-auto">
-            {data?.sessions.map((s) => (
-              <div key={s.id} className="flex items-center justify-between p-2 rounded-lg bg-gray-50">
-                <span className="text-gray-700">{s.session_name}</span>
-                {s.is_active && (
-                  <span className="badge-success badge text-xs">Active</span>
-                )}
+          <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+            {(data?.sessions || []).map((s: any) => (
+              <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', background: '#f9fafb', borderRadius: '8px', marginBottom: '4px' }}>
+                <span style={{ fontSize: '14px', color: '#374151' }}>{s.session_name}</span>
+                {s.is_current && <span style={{ fontSize: '12px', color: '#15803d', fontWeight: '600' }}>Active</span>}
               </div>
             ))}
           </div>
         </div>
 
         {/* Levels */}
-        <div className="card">
-          <div className="flex items-center gap-2 mb-4">
-            <Layers className="w-5 h-5 text-secondary-600" />
-            <h3 className="font-semibold text-gray-800">Levels</h3>
-          </div>
-          <div className="space-y-2">
-            {data?.levels.map((l) => (
-              <div key={l.id} className="flex items-center p-2 rounded-lg bg-gray-50">
-                <span className="text-gray-700">{l.level_name}</span>
-              </div>
-            ))}
-          </div>
-          <p className="text-xs text-gray-400 mt-3">Levels are predefined (100–500). Contact developer to modify.</p>
-        </div>
-
-        {/* Semesters */}
-        <div className="card">
-          <div className="flex items-center gap-2 mb-4">
-            <BookOpen className="w-5 h-5 text-accent-500" />
-            <h3 className="font-semibold text-gray-800">Semesters</h3>
-          </div>
-          <div className="space-y-2">
-            {data?.semesters.map((s) => (
-              <div key={s.id} className="flex items-center p-2 rounded-lg bg-gray-50">
-                <span className="text-gray-700">{s.semester_name} Semester</span>
-              </div>
-            ))}
-          </div>
+        <div style={cardStyle}>
+          <h3 style={{ fontWeight: '600', marginBottom: '16px', color: '#1f2937' }}>Levels</h3>
+          {(data?.levels || []).map((l: any) => (
+            <div key={l.id} style={{ padding: '8px', background: '#f9fafb', borderRadius: '8px', marginBottom: '4px', fontSize: '14px', color: '#374151' }}>
+              {l.name || l.level_name}
+            </div>
+          ))}
         </div>
 
         {/* Add Course */}
-        <div className="card">
-          <div className="flex items-center gap-2 mb-4">
-            <BookOpen className="w-5 h-5 text-blue-600" />
-            <h3 className="font-semibold text-gray-800">Add Course</h3>
-          </div>
-          <div className="space-y-3">
-            <input
-              className="input"
-              placeholder="Course Code (e.g. BIO 201)"
-              value={courseForm.course_code}
-              onChange={(e) => setCourseForm({ ...courseForm, course_code: e.target.value })}
-            />
-            <input
-              className="input"
-              placeholder="Course Title"
-              value={courseForm.course_title}
-              onChange={(e) => setCourseForm({ ...courseForm, course_title: e.target.value })}
-            />
-            <select
-              className="input"
-              value={courseForm.level_id}
-              onChange={(e) => setCourseForm({ ...courseForm, level_id: e.target.value })}
-            >
-              <option value="">Select Level</option>
-              {data?.levels.map((l) => (
-                <option key={l.id} value={l.id}>{l.level_name}</option>
-              ))}
-            </select>
-            <select
-              className="input"
-              value={courseForm.semester_id}
-              onChange={(e) => setCourseForm({ ...courseForm, semester_id: e.target.value })}
-            >
-              <option value="">Select Semester</option>
-              {data?.semesters.map((s) => (
-                <option key={s.id} value={s.id}>{s.semester_name} Semester</option>
-              ))}
-            </select>
-            <button onClick={handleAddCourse} disabled={addingCourse} className="btn-primary w-full flex items-center justify-center gap-2">
-              <Plus className="w-4 h-4" /> {addingCourse ? 'Adding...' : 'Add Course'}
-            </button>
-          </div>
+        <div style={cardStyle}>
+          <h3 style={{ fontWeight: '600', marginBottom: '16px', color: '#1f2937' }}>Add Course</h3>
+          <input value={courseForm.course_code} onChange={(e) => setCourseForm({ ...courseForm, course_code: e.target.value })}
+            placeholder="Course Code (e.g. BIO 201)" style={inputStyle} />
+          <input value={courseForm.course_title} onChange={(e) => setCourseForm({ ...courseForm, course_title: e.target.value })}
+            placeholder="Course Title" style={inputStyle} />
+          <select value={courseForm.level_id} onChange={(e) => setCourseForm({ ...courseForm, level_id: e.target.value })}
+            style={inputStyle}>
+            <option value="">Select Level</option>
+            {(data?.levels || []).map((l: any) => (
+              <option key={l.id} value={l.id}>{l.name || l.level_name}</option>
+            ))}
+          </select>
+          <select value={courseForm.semester_id} onChange={(e) => setCourseForm({ ...courseForm, semester_id: e.target.value })}
+            style={inputStyle}>
+            <option value="">Select Semester</option>
+            {(data?.semesters || []).map((s: any) => (
+              <option key={s.id} value={s.id}>{s.name || s.semester_name} Semester</option>
+            ))}
+          </select>
+          <button onClick={handleAddCourse} style={btnStyle}>Add Course</button>
         </div>
+
       </div>
 
       {/* Courses Table */}
-      <div className="card overflow-hidden p-0">
-        <div className="p-4 border-b border-gray-100">
-          <h3 className="font-semibold text-gray-800">All Courses ({data?.courses.length})</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="data-table">
+      <div style={cardStyle}>
+        <h3 style={{ fontWeight: '600', marginBottom: '16px', color: '#1f2937' }}>All Courses ({(data?.courses || []).length})</h3>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
             <thead>
-              <tr>
-                <th>Course Code</th>
-                <th>Course Title</th>
-                <th>Level</th>
-                <th>Semester</th>
+              <tr style={{ background: '#f9fafb' }}>
+                <th style={{ padding: '12px', textAlign: 'left', color: '#6b7280', fontWeight: '600' }}>Code</th>
+                <th style={{ padding: '12px', textAlign: 'left', color: '#6b7280', fontWeight: '600' }}>Title</th>
+                <th style={{ padding: '12px', textAlign: 'left', color: '#6b7280', fontWeight: '600' }}>Level</th>
+                <th style={{ padding: '12px', textAlign: 'left', color: '#6b7280', fontWeight: '600' }}>Semester</th>
               </tr>
             </thead>
             <tbody>
-              {data?.courses.map((c) => (
-                <tr key={c.id}>
-                  <td className="font-mono font-medium text-primary-700">{c.course_code}</td>
-                  <td className="text-gray-700">{c.course_title}</td>
-                  <td className="text-gray-600">{c.level_name}</td>
-                  <td className="text-gray-600">{c.semester_name} Semester</td>
+              {(data?.courses || []).map((c: any) => (
+                <tr key={c.id} style={{ borderTop: '1px solid #f3f4f6' }}>
+                  <td style={{ padding: '12px', color: '#15803d', fontFamily: 'monospace', fontWeight: '600' }}>{c.course_code}</td>
+                  <td style={{ padding: '12px', color: '#374151' }}>{c.course_title}</td>
+                  <td style={{ padding: '12px', color: '#6b7280' }}>{c.level_name}</td>
+                  <td style={{ padding: '12px', color: '#6b7280' }}>{c.semester_name} Semester</td>
                 </tr>
               ))}
             </tbody>
