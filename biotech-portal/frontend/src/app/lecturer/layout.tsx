@@ -3,117 +3,144 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { GraduationCap, LayoutDashboard, FileText, LogOut, Menu, X, ChevronRight } from 'lucide-react';
-import { useAuthStore } from '@/lib/store';
+import { GraduationCap, LayoutDashboard, FileText, LogOut, Menu, ChevronRight } from 'lucide-react';
 
 const NAV_ITEMS = [
   { href: '/lecturer/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/lecturer/materials', icon: FileText, label: 'My Materials' },
 ];
 
-const PUBLIC_PATHS = ['/lecturer/login', '/lecturer/register'];
-
 export default function LecturerLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, isAuthenticated, logout } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [userName, setUserName] = useState('Lecturer');
+  const [userEmail, setUserEmail] = useState('');
+  const [checked, setChecked] = useState(false);
+  const [authed, setAuthed] = useState(false);
 
-  const isPublicPath = PUBLIC_PATHS.some(p => pathname.startsWith(p));
+  const isPublicPath = pathname.includes('/login') || pathname.includes('/register');
 
   useEffect(() => {
-    if (!isPublicPath && !isAuthenticated) {
-      router.push('/lecturer/login');
+    try {
+      const token = localStorage.getItem('biotech_token');
+      const userStr = localStorage.getItem('biotech_user');
+      if (token) {
+        setAuthed(true);
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          setUserName(user.name || user.full_name || 'Lecturer');
+          setUserEmail(user.email || '');
+        }
+      } else if (!isPublicPath) {
+        router.push('/lecturer/login');
+      }
+    } catch (e) {
+      if (!isPublicPath) router.push('/lecturer/login');
     }
-  }, [isAuthenticated, isPublicPath]);
+    setChecked(true);
+  }, []);
 
-  if (isPublicPath) {
-    return <>{children}</>;
-  }
+  if (!checked) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: '32px', height: '32px', border: '4px solid #15803d', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+    </div>
+  );
 
-  if (!isAuthenticated) return null;
+  if (isPublicPath) return <>{children}</>;
+
+  if (!authed) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: '32px', height: '32px', border: '4px solid #15803d', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+    </div>
+  );
+
+  const handleLogout = () => {
+    localStorage.removeItem('biotech_token');
+    localStorage.removeItem('biotech_user');
+    window.location.href = '/lecturer/login';
+  };
 
   const breadcrumb = NAV_ITEMS.find((n) => pathname.startsWith(n.href))?.label || '';
 
-  const handleLogout = () => {
-    logout();
-    router.push('/lecturer/login');
-  };
-
   return (
-    <div className="min-h-screen bg-background flex">
+    <div style={{ minHeight: '100vh', background: '#f9fafb', display: 'flex' }}>
       {sidebarOpen && (
-        <div className="fixed inset-0 bg-black/50 z-20 lg:hidden" onClick={() => setSidebarOpen(false)} />
+        <div onClick={() => setSidebarOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 20 }} />
       )}
 
-      <aside className={`
-        fixed top-0 left-0 h-full w-64 bg-white border-r border-gray-200 z-30 flex flex-col
-        transition-transform duration-300
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        lg:translate-x-0 lg:static lg:z-auto
-      `}>
-        <div className="p-4 border-b border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-primary-600 rounded-xl flex items-center justify-center">
-              <GraduationCap className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <p className="font-semibold text-gray-800 text-sm">Lecturer Portal</p>
-              <p className="text-xs text-gray-500">Biotechnology · FUL</p>
-            </div>
+      <aside style={{
+        position: 'fixed', top: 0, left: 0, height: '100%', width: '256px',
+        background: 'white', borderRight: '1px solid #e5e7eb', zIndex: 30,
+        display: 'flex', flexDirection: 'column',
+        transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
+        transition: 'transform 0.3s'
+      }}
+        className="lg-sidebar">
+        <div style={{ padding: '16px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ width: '40px', height: '40px', background: '#15803d', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <GraduationCap style={{ width: '20px', height: '20px', color: 'white' }} />
+          </div>
+          <div>
+            <p style={{ fontWeight: '600', color: '#1f2937', fontSize: '14px', margin: 0 }}>Lecturer Portal</p>
+            <p style={{ fontSize: '12px', color: '#6b7280', margin: 0 }}>Biotechnology · FUL</p>
           </div>
         </div>
 
-        <nav className="flex-1 p-4 space-y-1">
+        <nav style={{ flex: 1, padding: '16px' }}>
           {NAV_ITEMS.map((item) => {
             const active = pathname.startsWith(item.href);
             return (
               <Link key={item.href} href={item.href} onClick={() => setSidebarOpen(false)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-sm font-medium ${
-                  active ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-100'
-                }`}>
-                <item.icon className={`w-4 h-4 ${active ? 'text-primary-600' : ''}`} />
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px',
+                  borderRadius: '12px', textDecoration: 'none', fontSize: '14px', fontWeight: '500',
+                  marginBottom: '4px',
+                  background: active ? '#f0fdf4' : 'transparent',
+                  color: active ? '#15803d' : '#6b7280'
+                }}>
+                <item.icon style={{ width: '16px', height: '16px' }} />
                 {item.label}
               </Link>
             );
           })}
         </nav>
 
-        <div className="p-4 border-t border-gray-100">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center">
-              <span className="text-primary-700 font-semibold text-sm">
-                {user?.full_name?.charAt(0) || 'L'}
-              </span>
+        <div style={{ padding: '16px', borderTop: '1px solid #f3f4f6' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+            <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ color: '#15803d', fontWeight: '600', fontSize: '14px' }}>{userName.charAt(0)}</span>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-800 truncate">{user?.full_name}</p>
-              <p className="text-xs text-gray-400 truncate">{user?.email}</p>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: '14px', fontWeight: '500', color: '#1f2937', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userName}</p>
+              <p style={{ fontSize: '12px', color: '#9ca3af', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userEmail}</p>
             </div>
           </div>
           <button onClick={handleLogout}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-red-600 hover:bg-red-50 transition-colors text-sm">
-            <LogOut className="w-4 h-4" /> Sign Out
+            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', borderRadius: '12px', color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px' }}>
+            <LogOut style={{ width: '16px', height: '16px' }} /> Sign Out
           </button>
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3 lg:px-6">
-          <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 rounded-lg hover:bg-gray-100">
-            <Menu className="w-5 h-5" />
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', marginLeft: '0' }}>
+        <header style={{ background: 'white', borderBottom: '1px solid #e5e7eb', padding: '12px 24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button onClick={() => setSidebarOpen(true)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', borderRadius: '8px' }}>
+            <Menu style={{ width: '20px', height: '20px' }} />
           </button>
-          <div className="flex items-center gap-1 text-sm text-gray-500">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', color: '#6b7280' }}>
             <span>Lecturer</span>
             {breadcrumb && (
               <>
-                <ChevronRight className="w-4 h-4" />
-                <span className="text-gray-800 font-medium">{breadcrumb}</span>
+                <ChevronRight style={{ width: '16px', height: '16px' }} />
+                <span style={{ color: '#1f2937', fontWeight: '500' }}>{breadcrumb}</span>
               </>
             )}
           </div>
         </header>
-        <main className="flex-1 p-4 lg:p-6 overflow-auto">{children}</main>
+        <main style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>{children}</main>
       </div>
     </div>
   );
