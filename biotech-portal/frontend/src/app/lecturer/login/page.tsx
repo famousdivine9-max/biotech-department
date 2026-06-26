@@ -1,15 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import toast from 'react-hot-toast';
 import { Eye, EyeOff, GraduationCap, Loader2 } from 'lucide-react';
-import { api, getErrorMessage } from '@/lib/api';
-import { useAuthStore } from '@/lib/store';
 import Link from 'next/link';
+
+const API = process.env.NEXT_PUBLIC_API_URL || 'https://biotech-portal-backend.onrender.com/api';
 
 const loginSchema = z.object({
   email: z.string().email('Enter a valid email'),
@@ -24,132 +22,134 @@ type LoginData = z.infer<typeof loginSchema>;
 type ForgotData = z.infer<typeof forgotSchema>;
 
 export default function LecturerLoginPage() {
-  const router = useRouter();
-  const login = useAuthStore((s) => s.login);
   const [showPassword, setShowPassword] = useState(false);
   const [forgotMode, setForgotMode] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
+  const [error, setError] = useState('');
 
   const loginForm = useForm<LoginData>({ resolver: zodResolver(loginSchema) });
   const forgotForm = useForm<ForgotData>({ resolver: zodResolver(forgotSchema) });
 
   const onLogin = async (data: LoginData) => {
+    setError('');
     try {
-      const res = await api.auth.lecturerLogin(data.email, data.password);
-      login(res.data.user, res.data.token);
-      toast.success('Welcome back!');
-      router.push('/lecturer/dashboard');
+      const res = await fetch(API + '/auth/lecturer/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: data.email, password: data.password })
+      });
+      const result = await res.json();
+      if (!res.ok) { setError(result.message || 'Login failed'); return; }
+      const token = result.token || (result.data && result.data.token);
+      const user = result.user || (result.data && result.data.user);
+      if (!token) { setError('Login failed - no token received'); return; }
+      localStorage.setItem('biotech_token', token);
+      localStorage.setItem('biotech_user', JSON.stringify(user));
+      window.location.href = '/lecturer/dashboard';
     } catch (err) {
-      toast.error(getErrorMessage(err));
+      setError('Network error. Please try again.');
     }
   };
 
   const onForgot = async (data: ForgotData) => {
     try {
-      await api.auth.forgotPassword(data.email);
+      await fetch(API + '/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: data.email })
+      });
       setForgotSent(true);
     } catch (err) {
-      toast.error(getErrorMessage(err));
+      setError('Failed to send reset email');
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-900 via-primary-800 to-secondary-800 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-2xl shadow-lg mb-4">
-            <GraduationCap className="w-8 h-8 text-primary-700" />
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #14532d, #0f766e)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+      <div style={{ width: '100%', maxWidth: '440px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '64px', height: '64px', background: 'white', borderRadius: '16px', marginBottom: '16px' }}>
+            <GraduationCap style={{ width: '32px', height: '32px', color: '#15803d' }} />
           </div>
-          <h1 className="text-2xl font-bold text-white">Lecturer Portal</h1>
-          <p className="text-primary-200 mt-1">Department of Biotechnology · FUL</p>
+          <h1 style={{ color: 'white', fontSize: '24px', fontWeight: '700', margin: 0 }}>Lecturer Portal</h1>
+          <p style={{ color: '#bbf7d0', marginTop: '4px', fontSize: '14px' }}>Department of Biotechnology · FUL</p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
+        <div style={{ background: 'white', borderRadius: '20px', padding: '32px', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
           {!forgotMode ? (
             <>
-              <h2 className="text-xl font-semibold text-gray-800 mb-6">Sign In</h2>
-              <form onSubmit={loginForm.handleSubmit(onLogin)} className="space-y-5">
-                <div>
-                  <label className="label">Email Address</label>
-                  <input {...loginForm.register('email')} type="email" className="input" placeholder="your@email.com" />
-                  {loginForm.formState.errors.email && (
-                    <p className="text-red-500 text-xs mt-1">{loginForm.formState.errors.email.message}</p>
-                  )}
+              <h2 style={{ fontWeight: '600', color: '#1f2937', marginBottom: '24px', fontSize: '20px' }}>Sign In</h2>
+              {error && <p style={{ color: '#dc2626', background: '#fef2f2', padding: '12px', borderRadius: '8px', fontSize: '14px', marginBottom: '16px' }}>{error}</p>}
+              <form onSubmit={loginForm.handleSubmit(onLogin)}>
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '6px' }}>Email Address</label>
+                  <input {...loginForm.register('email')} type="email"
+                    style={{ width: '100%', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '10px 14px', fontSize: '14px', boxSizing: 'border-box' }}
+                    placeholder="your@email.com" />
+                  {loginForm.formState.errors.email && <p style={{ color: '#dc2626', fontSize: '12px', marginTop: '4px' }}>{loginForm.formState.errors.email.message}</p>}
                 </div>
-                <div>
-                  <label className="label">Password</label>
-                  <div className="relative">
-                    <input
-                      {...loginForm.register('password')}
-                      type={showPassword ? 'text' : 'password'}
-                      className="input pr-10"
-                      placeholder="Your password"
-                    />
+                <div style={{ marginBottom: '8px' }}>
+                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '6px' }}>Password</label>
+                  <div style={{ position: 'relative' }}>
+                    <input {...loginForm.register('password')} type={showPassword ? 'text' : 'password'}
+                      style={{ width: '100%', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '10px 40px 10px 14px', fontSize: '14px', boxSizing: 'border-box' }}
+                      placeholder="Your password" />
                     <button type="button" onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}>
+                      {showPassword ? <EyeOff style={{ width: '16px', height: '16px' }} /> : <Eye style={{ width: '16px', height: '16px' }} />}
                     </button>
                   </div>
-                  {loginForm.formState.errors.password && (
-                    <p className="text-red-500 text-xs mt-1">{loginForm.formState.errors.password.message}</p>
-                  )}
+                  {loginForm.formState.errors.password && <p style={{ color: '#dc2626', fontSize: '12px', marginTop: '4px' }}>{loginForm.formState.errors.password.message}</p>}
                 </div>
-                <div className="flex justify-end">
+                <div style={{ textAlign: 'right', marginBottom: '20px' }}>
                   <button type="button" onClick={() => setForgotMode(true)}
-                    className="text-sm text-primary-600 hover:underline">
+                    style={{ background: 'none', border: 'none', color: '#15803d', fontSize: '13px', cursor: 'pointer' }}>
                     Forgot password?
                   </button>
                 </div>
-                <button type="submit" disabled={loginForm.formState.isSubmitting} className="btn-primary w-full flex items-center justify-center gap-2">
-                  {loginForm.formState.isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Signing in...</> : 'Sign In'}
+                <button type="submit" disabled={loginForm.formState.isSubmitting}
+                  style={{ width: '100%', background: '#15803d', color: 'white', border: 'none', borderRadius: '10px', padding: '12px', fontSize: '15px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                  {loginForm.formState.isSubmitting ? <><Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} /> Signing in...</> : 'Sign In'}
                 </button>
               </form>
-              <p className="text-center text-sm text-gray-500 mt-4">
-                No account?{' '}
-                <Link href="/lecturer/register" className="text-primary-600 font-medium hover:underline">Register here</Link>
+              <p style={{ textAlign: 'center', fontSize: '14px', color: '#6b7280', marginTop: '16px' }}>
+                No account? <Link href="/lecturer/register" style={{ color: '#15803d', fontWeight: '600' }}>Register here</Link>
               </p>
             </>
           ) : forgotSent ? (
-            <div className="text-center py-4">
-              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <h3 className="font-semibold text-gray-800 mb-2">Check Your Email</h3>
-              <p className="text-gray-500 text-sm mb-4">
-                A password reset link has been sent to your email address.
-              </p>
+            <div style={{ textAlign: 'center', padding: '16px 0' }}>
+              <h3 style={{ fontWeight: '600', color: '#1f2937', marginBottom: '8px' }}>Check Your Email</h3>
+              <p style={{ color: '#6b7280', fontSize: '14px', marginBottom: '16px' }}>A password reset link has been sent.</p>
               <button onClick={() => { setForgotMode(false); setForgotSent(false); }}
-                className="text-primary-600 font-medium hover:underline text-sm">
+                style={{ background: 'none', border: 'none', color: '#15803d', cursor: 'pointer', fontSize: '14px' }}>
                 Back to login
               </button>
             </div>
           ) : (
             <>
-              <h2 className="text-xl font-semibold text-gray-800 mb-2">Forgot Password</h2>
-              <p className="text-gray-500 text-sm mb-6">Enter your email to receive a reset link.</p>
-              <form onSubmit={forgotForm.handleSubmit(onForgot)} className="space-y-4">
-                <div>
-                  <label className="label">Email Address</label>
-                  <input {...forgotForm.register('email')} type="email" className="input" placeholder="your@email.com" />
-                  {forgotForm.formState.errors.email && (
-                    <p className="text-red-500 text-xs mt-1">{forgotForm.formState.errors.email.message}</p>
-                  )}
+              <h2 style={{ fontWeight: '600', color: '#1f2937', marginBottom: '8px', fontSize: '20px' }}>Forgot Password</h2>
+              <p style={{ color: '#6b7280', fontSize: '14px', marginBottom: '20px' }}>Enter your email to receive a reset link.</p>
+              <form onSubmit={forgotForm.handleSubmit(onForgot)}>
+                <div style={{ marginBottom: '16px' }}>
+                  <input {...forgotForm.register('email')} type="email"
+                    style={{ width: '100%', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '10px 14px', fontSize: '14px', boxSizing: 'border-box' }}
+                    placeholder="your@email.com" />
                 </div>
-                <button type="submit" disabled={forgotForm.formState.isSubmitting} className="btn-primary w-full flex items-center justify-center gap-2">
-                  {forgotForm.formState.isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending...</> : 'Send Reset Link'}
+                <button type="submit" disabled={forgotForm.formState.isSubmitting}
+                  style={{ width: '100%', background: '#15803d', color: 'white', border: 'none', borderRadius: '10px', padding: '12px', fontSize: '15px', fontWeight: '600', cursor: 'pointer' }}>
+                  {forgotForm.formState.isSubmitting ? 'Sending...' : 'Send Reset Link'}
                 </button>
               </form>
-              <button onClick={() => setForgotMode(false)} className="w-full text-center text-sm text-gray-500 mt-3 hover:text-gray-700">
+              <button onClick={() => setForgotMode(false)}
+                style={{ width: '100%', textAlign: 'center', background: 'none', border: 'none', color: '#6b7280', marginTop: '12px', cursor: 'pointer', fontSize: '14px' }}>
                 ← Back to login
               </button>
             </>
           )}
         </div>
 
-        <p className="text-center mt-4 text-primary-200 text-sm">
-          <Link href="/" className="hover:text-white">← Back to Portal</Link>
+        <p style={{ textAlign: 'center', marginTop: '20px', fontSize: '14px' }}>
+          <Link href="/" style={{ color: '#bbf7d0', textDecoration: 'none' }}>← Back to Portal</Link>
         </p>
       </div>
     </div>
