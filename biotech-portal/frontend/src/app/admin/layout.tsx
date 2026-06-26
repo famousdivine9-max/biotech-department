@@ -22,38 +22,44 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userName, setUserName] = useState('Admin');
   const [userEmail, setUserEmail] = useState('');
-  const [ready, setReady] = useState(false);
+  const [checked, setChecked] = useState(false);
+  const [authed, setAuthed] = useState(false);
 
-  const isLoginPage = pathname.includes('login');
+  const isLoginPage = pathname.includes('/admin/login');
 
   useEffect(() => {
-    if (isLoginPage) {
-      setReady(true);
-      return;
-    }
-    const token = localStorage.getItem('biotech_token');
-    if (!token) {
-      router.push('/admin/login');
-      return;
-    }
     try {
+      const token = localStorage.getItem('biotech_token');
       const userStr = localStorage.getItem('biotech_user');
-      if (userStr) {
-        const user = JSON.parse(userStr);
-        setUserName(user.name || user.full_name || 'Admin');
-        setUserEmail(user.email || '');
+      if (token) {
+        setAuthed(true);
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          setUserName(user.name || user.full_name || 'Admin');
+          setUserEmail(user.email || '');
+        }
+      } else if (!isLoginPage) {
+        router.push('/admin/login');
       }
-    } catch (e) {}
-    setReady(true);
-  }, [pathname]);
+    } catch (e) {
+      if (!isLoginPage) router.push('/admin/login');
+    }
+    setChecked(true);
+  }, []);
 
-  if (!ready) return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
+  if (!checked) return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
     </div>
   );
 
   if (isLoginPage) return <>{children}</>;
+
+  if (!authed) return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
 
   const handleLogout = () => {
     localStorage.removeItem('biotech_token');
