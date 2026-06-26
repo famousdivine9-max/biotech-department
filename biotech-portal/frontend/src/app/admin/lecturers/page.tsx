@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CheckCircle, XCircle, PauseCircle, Trash2, Key, RefreshCw, User } from 'lucide-react';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'https://biotech-portal-backend.onrender.com/api';
 
-const getToken = () => typeof window !== 'undefined' ? localStorage.getItem('biotech_token') : '';
+function getToken() {
+  return typeof window !== 'undefined' ? localStorage.getItem('biotech_token') || '' : '';
+}
 
 export default function AdminLecturersPage() {
   const [lecturers, setLecturers] = useState<any[]>([]);
@@ -14,134 +15,129 @@ export default function AdminLecturersPage() {
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [msg, setMsg] = useState('');
 
-  const fetchLecturers = async () => {
+  async function fetchLecturers() {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/admin/lecturers?search=${search}&limit=50`, {
-        headers: { Authorization: `Bearer ${getToken()}` }
+      const res = await fetch(API + '/admin/lecturers?search=' + search + '&limit=50', {
+        headers: { Authorization: 'Bearer ' + getToken() }
       });
       const data = await res.json();
-      setLecturers(data.lecturers || data.data?.lecturers || []);
+      const list = data.lecturers || (data.data && data.data.lecturers) || data.data || [];
+      setLecturers(Array.isArray(list) ? list : []);
     } catch (e) {
       setMsg('Failed to load lecturers');
     }
     setLoading(false);
-  };
+  }
 
   useEffect(() => { fetchLecturers(); }, []);
 
-  const handleAction = async (id: number, action: string) => {
+  async function handleAction(id: number, action: string) {
     if (action === 'delete' && !confirm('Delete this lecturer?')) return;
     setActionLoading(id);
     try {
       if (action === 'delete') {
-        await fetch(`${API}/admin/lecturers/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${getToken()}` } });
+        await fetch(API + '/admin/lecturers/' + id, {
+          method: 'DELETE',
+          headers: { Authorization: 'Bearer ' + getToken() }
+        });
         setMsg('Lecturer deleted');
       } else if (action === 'reset') {
-        const res = await fetch(`${API}/admin/lecturers/${id}/reset-password`, { method: 'PATCH', headers: { Authorization: `Bearer ${getToken()}` } });
-        const data = await res.json();
-        alert(`Temporary password: ${data.temp_password || data.data?.temp_password}`);
-      } else {
-        await fetch(`${API}/admin/lecturers/${id}/status`, {
+        const res = await fetch(API + '/admin/lecturers/' + id + '/reset-password', {
           method: 'PATCH',
-          headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+          headers: { Authorization: 'Bearer ' + getToken() }
+        });
+        const data = await res.json();
+        alert('Temporary password: ' + (data.temp_password || (data.data && data.data.temp_password) || 'Check email'));
+      } else {
+        await fetch(API + '/admin/lecturers/' + id + '/status', {
+          method: 'PATCH',
+          headers: { Authorization: 'Bearer ' + getToken(), 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: action })
         });
-        setMsg(`Lecturer ${action}d`);
+        setMsg('Lecturer ' + action);
       }
       fetchLecturers();
     } catch (e) {
       setMsg('Action failed');
     }
     setActionLoading(null);
-  };
+  }
 
   const statusColors: any = {
-    pending: 'bg-yellow-100 text-yellow-700',
-    approved: 'bg-green-100 text-green-700',
-    rejected: 'bg-red-100 text-red-700',
-    suspended: 'bg-gray-100 text-gray-600',
+    pending: { background: '#fef9c3', color: '#92400e' },
+    approved: { background: '#dcfce7', color: '#15803d' },
+    rejected: { background: '#fee2e2', color: '#dc2626' },
+    suspended: { background: '#f3f4f6', color: '#6b7280' },
   };
 
+  const btnStyle = (color: string) => ({
+    background: color, color: 'white', border: 'none', borderRadius: '6px',
+    padding: '6px 12px', cursor: 'pointer', fontSize: '12px', marginRight: '4px'
+  });
+
   return (
-    <div className="space-y-6">
-      {msg && <div className="bg-green-50 text-green-700 p-3 rounded-xl text-sm">{msg}</div>}
-      
-      <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex gap-3">
+    <div>
+      {msg && (
+        <div style={{ background: '#f0fdf4', color: '#15803d', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '14px' }}>
+          {msg}
+        </div>
+      )}
+
+      <div style={{ background: 'white', borderRadius: '16px', padding: '16px', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', display: 'flex', gap: '12px' }}>
         <input
-          className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-green-500"
+          style={{ flex: 1, border: '1px solid #e5e7eb', borderRadius: '8px', padding: '8px 12px', fontSize: '14px' }}
           placeholder="Search lecturers..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && fetchLecturers()}
         />
-        <button onClick={fetchLecturers} className="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-xl text-sm flex items-center gap-2">
-          <RefreshCw className="w-4 h-4" /> Refresh
+        <button onClick={fetchLecturers}
+          style={{ background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', fontSize: '14px' }}>
+          Refresh
         </button>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="p-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-800">Lecturers ({lecturers.length})</h2>
+      <div style={{ background: 'white', borderRadius: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+        <div style={{ padding: '16px', borderBottom: '1px solid #f3f4f6' }}>
+          <h2 style={{ fontWeight: '600', color: '#1f2937' }}>Lecturers ({lecturers.length})</h2>
         </div>
-        
+
         {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
-          </div>
+          <div style={{ textAlign: 'center', padding: '48px', color: '#9ca3af' }}>Loading...</div>
         ) : lecturers.length === 0 ? (
-          <div className="text-center py-12 text-gray-400">No lecturers found</div>
+          <div style={{ textAlign: 'center', padding: '48px', color: '#9ca3af' }}>No lecturers found</div>
         ) : (
-          <div className="divide-y divide-gray-50">
-            {lecturers.map((l: any) => (
-              <div key={l.id} className="p-4 flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center shrink-0">
-                  <User className="w-5 h-5 text-green-700" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-800">{l.full_name}</p>
-                  <p className="text-sm text-gray-500">{l.email} · {l.staff_id}</p>
-                  <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[l.status]}`}>
-                    {l.status?.charAt(0).toUpperCase() + l.status?.slice(1)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  {l.status === 'pending' && (
-                    <>
-                      <button onClick={() => handleAction(l.id, 'approved')} disabled={actionLoading === l.id}
-                        className="p-2 rounded-lg text-green-600 hover:bg-green-50" title="Approve">
-                        <CheckCircle className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => handleAction(l.id, 'rejected')} disabled={actionLoading === l.id}
-                        className="p-2 rounded-lg text-red-600 hover:bg-red-50" title="Reject">
-                        <XCircle className="w-4 h-4" />
-                      </button>
-                    </>
-                  )}
-                  {l.status === 'approved' && (
-                    <button onClick={() => handleAction(l.id, 'suspended')} disabled={actionLoading === l.id}
-                      className="p-2 rounded-lg text-orange-600 hover:bg-orange-50" title="Suspend">
-                      <PauseCircle className="w-4 h-4" />
-                    </button>
-                  )}
-                  {(l.status === 'rejected' || l.status === 'suspended') && (
-                    <button onClick={() => handleAction(l.id, 'approved')} disabled={actionLoading === l.id}
-                      className="p-2 rounded-lg text-green-600 hover:bg-green-50" title="Approve">
-                      <CheckCircle className="w-4 h-4" />
-                    </button>
-                  )}
-                  <button onClick={() => handleAction(l.id, 'reset')} disabled={actionLoading === l.id}
-                    className="p-2 rounded-lg text-blue-600 hover:bg-blue-50" title="Reset Password">
-                    <Key className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => handleAction(l.id, 'delete')} disabled={actionLoading === l.id}
-                    className="p-2 rounded-lg text-red-600 hover:bg-red-50" title="Delete">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+          lecturers.map((l: any) => (
+            <div key={l.id} style={{ padding: '16px', borderBottom: '1px solid #f9fafb', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <span style={{ color: '#15803d', fontWeight: '600' }}>{l.full_name?.charAt(0)}</span>
               </div>
-            ))}
-          </div>
+              <div style={{ flex: 1, minWidth: '200px' }}>
+                <p style={{ fontWeight: '600', color: '#1f2937', margin: 0 }}>{l.full_name}</p>
+                <p style={{ fontSize: '13px', color: '#6b7280', margin: '2px 0' }}>{l.email} · {l.staff_id}</p>
+                <span style={{ ...statusColors[l.status], fontSize: '12px', padding: '2px 8px', borderRadius: '999px', fontWeight: '600' }}>
+                  {l.status?.charAt(0).toUpperCase() + l.status?.slice(1)}
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                {l.status === 'pending' && (
+                  <>
+                    <button onClick={() => handleAction(l.id, 'approved')} disabled={actionLoading === l.id} style={btnStyle('#15803d')}>Approve</button>
+                    <button onClick={() => handleAction(l.id, 'rejected')} disabled={actionLoading === l.id} style={btnStyle('#dc2626')}>Reject</button>
+                  </>
+                )}
+                {l.status === 'approved' && (
+                  <button onClick={() => handleAction(l.id, 'suspended')} disabled={actionLoading === l.id} style={btnStyle('#d97706')}>Suspend</button>
+                )}
+                {(l.status === 'rejected' || l.status === 'suspended') && (
+                  <button onClick={() => handleAction(l.id, 'approved')} disabled={actionLoading === l.id} style={btnStyle('#15803d')}>Approve</button>
+                )}
+                <button onClick={() => handleAction(l.id, 'reset')} disabled={actionLoading === l.id} style={btnStyle('#2563eb')}>Reset Password</button>
+                <button onClick={() => handleAction(l.id, 'delete')} disabled={actionLoading === l.id} style={btnStyle('#dc2626')}>Delete</button>
+              </div>
+            </div>
+          ))
         )}
       </div>
     </div>
