@@ -1,191 +1,99 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Search, Trash2, Edit2, Download, RefreshCw, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
-import { api, getErrorMessage } from '@/lib/api';
-import toast from 'react-hot-toast';
+import { FileText, Trash2, Download, RefreshCw } from 'lucide-react';
 
-interface Material {
-  id: number;
-  title: string;
-  course_code: string;
-  level: string;
-  semester: string;
-  session_name: string;
-  lecturer_name: string;
-  download_count: number;
-  created_at: string;
-  file_url: string;
-}
+const API = process.env.NEXT_PUBLIC_API_URL || 'https://biotech-portal-backend.onrender.com/api';
+const getToken = () => typeof window !== 'undefined' ? localStorage.getItem('biotech_token') : '';
 
 export default function AdminMaterialsPage() {
-  const [materials, setMaterials] = useState<Material[]>([]);
+  const [materials, setMaterials] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [levelFilter, setLevelFilter] = useState('');
-  const [semFilter, setSemFilter] = useState('');
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [deleting, setDeleting] = useState<number | null>(null);
-
-  const limit = 20;
-  const totalPages = Math.ceil(total / limit);
+  const [msg, setMsg] = useState('');
 
   const fetchMaterials = async () => {
     setLoading(true);
     try {
-      const res = await api.materials.getPublic({
-        search, level: levelFilter, semester: semFilter, page, limit,
+      const res = await fetch(`${API}/materials/public?search=${search}&limit=50`, {
+        headers: { Authorization: `Bearer ${getToken()}` }
       });
-      setMaterials(res.data.materials);
-      setTotal(res.data.total);
-    } catch (err) {
-      toast.error(getErrorMessage(err));
-    } finally {
-      setLoading(false);
+      const data = await res.json();
+      setMaterials(data.materials || data.data?.materials || []);
+    } catch (e) {
+      setMsg('Failed to load materials');
     }
+    setLoading(false);
   };
 
-  useEffect(() => { fetchMaterials(); }, [search, levelFilter, semFilter, page]);
+  useEffect(() => { fetchMaterials(); }, []);
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Delete this material? This cannot be undone.')) return;
-    setDeleting(id);
+    if (!confirm('Delete this material?')) return;
     try {
-      await api.materials.adminDelete(id);
-      toast.success('Material deleted');
+      await fetch(`${API}/materials/admin/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      setMsg('Material deleted');
       fetchMaterials();
-    } catch (err) {
-      toast.error(getErrorMessage(err));
-    } finally {
-      setDeleting(null);
+    } catch (e) {
+      setMsg('Delete failed');
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* Filters */}
-      <div className="card">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              className="input pl-9"
-              placeholder="Search materials..."
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            />
-          </div>
-          <select
-            className="input w-full sm:w-40"
-            value={levelFilter}
-            onChange={(e) => { setLevelFilter(e.target.value); setPage(1); }}
-          >
-            <option value="">All Levels</option>
-            {['100', '200', '300', '400', '500'].map((l) => (
-              <option key={l} value={l}>{l} Level</option>
-            ))}
-          </select>
-          <select
-            className="input w-full sm:w-40"
-            value={semFilter}
-            onChange={(e) => { setSemFilter(e.target.value); setPage(1); }}
-          >
-            <option value="">All Semesters</option>
-            <option value="First">First</option>
-            <option value="Second">Second</option>
-          </select>
-          <button onClick={fetchMaterials} className="btn-secondary flex items-center gap-2">
-            <RefreshCw className="w-4 h-4" />
-          </button>
-        </div>
+      {msg && <div className="bg-green-50 text-green-700 p-3 rounded-xl text-sm">{msg}</div>}
+
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex gap-3">
+        <input
+          className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-green-500"
+          placeholder="Search materials..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && fetchMaterials()}
+        />
+        <button onClick={fetchMaterials} className="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-xl text-sm flex items-center gap-2">
+          <RefreshCw className="w-4 h-4" /> Refresh
+        </button>
       </div>
 
-      {/* Table */}
-      <div className="card overflow-hidden p-0">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="p-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-800">All Materials ({total})</h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Course</th>
-                <th>Level</th>
-                <th>Semester</th>
-                <th>Session</th>
-                <th>Lecturer</th>
-                <th>Downloads</th>
-                <th>Uploaded</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={9} className="text-center py-12 text-gray-400">Loading...</td></tr>
-              ) : materials.length === 0 ? (
-                <tr><td colSpan={9} className="text-center py-12 text-gray-400">No materials found</td></tr>
-              ) : materials.map((m) => (
-                <tr key={m.id}>
-                  <td>
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-primary-600 shrink-0" />
-                      <span className="font-medium text-gray-800 line-clamp-1">{m.title}</span>
-                    </div>
-                  </td>
-                  <td className="text-gray-600">{m.course_code}</td>
-                  <td className="text-gray-600">{m.level} Level</td>
-                  <td className="text-gray-600">{m.semester}</td>
-                  <td className="text-gray-600">{m.session_name}</td>
-                  <td className="text-gray-600">{m.lecturer_name}</td>
-                  <td className="text-gray-600">{m.download_count}</td>
-                  <td className="text-gray-500 text-sm">
-                    {new Date(m.created_at).toLocaleDateString('en-NG')}
-                  </td>
-                  <td>
-                    <div className="flex items-center gap-1">
-                      <a
-                        href={m.file_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors"
-                        title="View File"
-                      >
-                        <Download className="w-4 h-4" />
-                      </a>
-                      <button
-                        onClick={() => handleDelete(m.id)}
-                        disabled={deleting === m.id}
-                        className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <h2 className="font-semibold text-gray-800">All Materials ({materials.length})</h2>
         </div>
 
-        {totalPages > 1 && (
-          <div className="p-4 border-t border-gray-100 flex items-center justify-between">
-            <p className="text-sm text-gray-500">
-              Showing {(page - 1) * limit + 1}–{Math.min(page * limit, total)} of {total}
-            </p>
-            <div className="flex gap-2">
-              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
-                className="p-2 rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50">
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                className="p-2 rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50">
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : materials.length === 0 ? (
+          <div className="text-center py-12 text-gray-400">No materials found</div>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {materials.map((m: any) => (
+              <div key={m.id} className="p-4 flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center shrink-0">
+                  <FileText className="w-5 h-5 text-red-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-gray-800 line-clamp-1">{m.title}</p>
+                  <p className="text-sm text-gray-500">{m.course_code} · {m.level_name} · {m.semester_name} · {m.session_name}</p>
+                  <p className="text-xs text-gray-400">{m.lecturer_name} · {m.download_count} downloads</p>
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  <a href={m.file_url} target="_blank" rel="noopener noreferrer"
+                    className="p-2 rounded-lg text-blue-600 hover:bg-blue-50">
+                    <Download className="w-4 h-4" />
+                  </a>
+                  <button onClick={() => handleDelete(m.id)}
+                    className="p-2 rounded-lg text-red-600 hover:bg-red-50">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
