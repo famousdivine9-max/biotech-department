@@ -1,346 +1,177 @@
 import { Request, Response } from 'express';
 import pool from '../config/database';
 import { uploadToCloudinary, deleteFromCloudinary } from '../services/cloudinaryService';
-import { AuthRequest } from '../middleware/auth';
 
-// ============================================================
-// UPLOAD MATERIAL (Lecturer)
-// ============================================================
 export const uploadMaterial = async (req: any, res: Response): Promise<void> => {
   try {
-    if (!(req as any).file) {
+    const { title, course_code, level, semester, academic_session, description } = req.body;
+    const file = req.file;
+    if (!title || !course_code || !level || !semester || !academic_session) {
+      res.status(400).json({ success: false, message: 'All fields are required.' });
+      return;
+    }
+    if (!file) {
       res.status(400).json({ success: false, message: 'PDF file is required.' });
       return;
     }
+    const lecturer_id = req.user.id;
 
-    // Validate file type
-    const allowedMimeTypes = ['application/pdf'];
-    if (!allowedMimeTypes.includes((req as any).file.mimetype)) {
-      res.status(400).json({ success: false, message: 'Only PDF files are allowed.' });
-      return;
-    }
+    // Look up IDs
+    const levelResult = await pool.query('SELECT id FROM levels WHERE name = $1', [level]);
+    const semesterResult = await pool.query('SELECT id FROM semesters WHERE name = $1', [semester]);
+    const sessionResult = await pool.query('SELECT id FROM academic_sessions WHERE session_name = $1', [academic_session]);
+    const courseResult = await pool.query('SELECT id FROM courses WHERE course_code = $1', [course_code]);
 
-    // Validate file size (50MB)
-    const maxSize = (parseInt(process.env.MAX_FILE_SIZE_MB || '50')) * 1024 * 1024;
-    if ((req as any).file.size > maxSize) {
-      res.status(400).json({ success: false, message: `File size must not exceed ${process.env.MAX_FILE_SIZE_MB || 50}MB.` });
-      return;
-    }
-
-    const { title, course_code, level, semester, academic_session, description } = req.body;
-
-    if (!title || !course_code || !level || !semester || !academic_session) {
-      res.status(400).json({ success: false, message: 'Title, course code, level, semester, and session are required.' });
-      return;
-    }
+    const level_id = levelResult.rows[0]?.id || null;
+    const semester_id = semesterResult.rows[0]?.id || null;
+    const session_id = sessionResult.rows[0]?.id || null;
+    const course_id = courseResult.rows[0]?.id || null;
 
     // Upload to Cloudinary
-    const { url, public_id } = await uploadToCloudinary(
-      (req as any).file.buffer,
-      (req as any).file.originalname,
-      'biotech-portal/materials',
-      'raw'
-    );
+    const uploadResult = await uploadToCloudinary(file.buffer, file.originalname);
 
-    // Get IDs for level, semester, session
-    const [levelRows]: any = await pool.query('SELECT id FROM levels WHERE name = ?', [level]);
-    const [semesterRows]: any = await pool.query('SELECT id FROM semesters WHERE name = ?', [semester]);
-    const [sessionRows]: any = await pool.query('SELECT id FROM academic_sessions WHERE session_name = ?', [academic_session]);
-    const [courseRows]: any = await pool.query('SELECT id FROM courses WHERE course_code = ?', [course_code.toUpperCase()]);
-
-    const [result]: any = await pool.query(
-      `INSERT INTO materials
-       (lecturer_id, title, description, course_code, course_id, level_id, semester_id, session_id,
-        file_url, file_public_id, file_size, file_name)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        (req as any).user!.id,
-        title.trim(),
-        description?.trim() || null,
-        course_code.toUpperCase().trim(),
-        courseRows.length ? courseRows[0].id : null,
-        levelRows.length ? levelRows[0].id : null,
-        semesterRows.length ? semesterRows[0].id : null,
-        sessionRows.length ? sessionRows[0].id : null,
-        url,
-        public_id,
-        (req as any).file.size,
-        (req as any).file.originalname,
-      ]
-    );
-
-    // Log activity
     await pool.query(
-      `INSERT INTO activity_logs (actor_type, actor_id, actor_name, action, description)
-       VALUES ('lecturer', ?, ?, 'material_upload', ?)`,
-      [(req as any).user!.id, (req as any).user!.name, `Uploaded material: ${title} (${course_code})`]
+      `INSERT INTO materials (lecturer_id, title, description, course_code, course_id, level_id, semester_id, session_id, file_url, file_public_id, file_size, file_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [lecturer_id, title, description || '', course_code, course_id, level_id, semester_id, session_id, uploadResult.url, uploadResult.public_id, file.size, file.originalname]
     );
 
-    res.status(201).json({
-      success: true,
-      message: 'Material uploaded successfully.',
-      data: { id: result.insertId, title, course_code, file_url: url },
-    });
+    res.json({ success: true, message: 'Material uploaded successfully.' });
   } catch (error) {
-    console.error('Upload material error:', error);
-    res.status(500).json({ success: false, message: 'Failed to upload material.' });
+    console.error('Upload error:', error);
+    res.status(500).json({ success: false, message: 'Server error during upload.' });
   }
 };
 
-// ============================================================
-// GET PUBLIC MATERIALS (Student access)
-// ============================================================
-export const getPublicMaterials = async (req: Request, res: Response): Promise<void> => {
+export const getPublicMaterials = async (req: any, res: Response): Promise<void> => {
   try {
-    const { level, semester, session, course_code, lecturer_id, search, page = '1', limit = '20' } = req.query;
-
+    const { search = '', level = '', semester = '', page = '1', limit = '20' } = req.query;
     let query = `
-      SELECT m.id, m.title, m.description, m.course_code, m.file_url, m.file_size, m.file_name,
-             m.download_count, m.created_at,
-             l.full_name AS lecturer_name, l.staff_id,
-             lv.name AS level_name,
-             s.name AS semester_name,
-             ac.session_name
+      SELECT m.*, l.full_name as lecturer_name, lv.name as level_name, s.name as semester_name, ac.session_name
       FROM materials m
-      JOIN lecturers l ON m.lecturer_id = l.id AND l.status = 'approved'
+      LEFT JOIN lecturers l ON m.lecturer_id = l.id
       LEFT JOIN levels lv ON m.level_id = lv.id
       LEFT JOIN semesters s ON m.semester_id = s.id
       LEFT JOIN academic_sessions ac ON m.session_id = ac.id
-      WHERE m.is_active = 1
+      WHERE m.is_active = true
     `;
     const params: any[] = [];
-
-    if (level) { query += ' AND lv.name = ?'; params.push(level); }
-    if (semester) { query += ' AND s.name = ?'; params.push(semester); }
-    if (session) { query += ' AND ac.session_name = ?'; params.push(session); }
-    if (course_code) { query += ' AND m.course_code = ?'; params.push(String(course_code).toUpperCase()); }
-    if (lecturer_id) { query += ' AND m.lecturer_id = ?'; params.push(lecturer_id); }
-    if (search) {
-      query += ' AND (m.title LIKE ? OR m.description LIKE ? OR m.course_code LIKE ?)';
-      const term = `%${search}%`;
-      params.push(term, term, term);
-    }
-
-    const pageNum = Math.max(1, parseInt(String(page)));
-    const limitNum = Math.min(50, Math.max(1, parseInt(String(limit))));
+    let idx = 1;
+    if (search) { query += ` AND (m.title ILIKE $${idx} OR m.course_code ILIKE $${idx+1})`; params.push(`%${search}%`, `%${search}%`); idx += 2; }
+    if (level) { query += ` AND lv.name ILIKE $${idx}`; params.push(`%${level}%`); idx++; }
+    if (semester) { query += ` AND s.name ILIKE $${idx}`; params.push(`%${semester}%`); idx++; }
+    const pageNum = parseInt(String(page));
+    const limitNum = parseInt(String(limit));
     const offset = (pageNum - 1) * limitNum;
-
-    // Count total
-    const countQuery = query.replace(
-      /SELECT.*?FROM materials/s,
-      'SELECT COUNT(*) AS total FROM materials'
-    );
-    const [countRows]: any = await pool.query(countQuery, params);
-    const total = countRows[0].total;
-
-    query += ' ORDER BY m.created_at DESC LIMIT ? OFFSET ?';
+    query += ` ORDER BY m.created_at DESC LIMIT $${idx} OFFSET $${idx+1}`;
     params.push(limitNum, offset);
-
-    const [rows]: any = await pool.query(query, params);
-
-    res.json({
-      success: true,
-      data: rows,
-      pagination: { total, page: pageNum, limit: limitNum, pages: Math.ceil(total / limitNum) },
-    });
+    const result = await pool.query(query, params);
+    res.json({ success: true, materials: result.rows, total: result.rows.length });
   } catch (error) {
-    console.error('Get public materials error:', error);
+    console.error('Get materials error:', error);
     res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
 
-// ============================================================
-// TRACK DOWNLOAD
-// ============================================================
-export const trackDownload = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { id } = req.params;
-
-    const [rows]: any = await pool.query(
-      'SELECT id, file_url, file_name FROM materials WHERE id = ? AND is_active = 1',
-      [id]
-    );
-
-    if (!rows.length) {
-      res.status(404).json({ success: false, message: 'Material not found.' });
-      return;
-    }
-
-    // Increment download count
-    await pool.query('UPDATE materials SET download_count = download_count + 1 WHERE id = ?', [id]);
-
-    // Log download
-    await pool.query(
-      'INSERT INTO material_downloads (material_id, ip_address, user_agent) VALUES (?, ?, ?)',
-      [id, req.ip, req.headers['user-agent'] || null]
-    );
-
-    res.json({ success: true, data: { file_url: rows[0].file_url, file_name: rows[0].file_name } });
-  } catch (error) {
-    console.error('Track download error:', error);
-    res.status(500).json({ success: false, message: 'Server error.' });
-  }
-};
-
-// ============================================================
-// GET LECTURER MATERIALS
-// ============================================================
 export const getLecturerMaterials = async (req: any, res: Response): Promise<void> => {
   try {
-    const { search, course_code, page = '1', limit = '20' } = req.query;
-    const lecturerId = (req as any).user!.id;
-
-    let query = `
-      SELECT m.*, lv.name AS level_name, s.name AS semester_name, ac.session_name
-      FROM materials m
-      LEFT JOIN levels lv ON m.level_id = lv.id
-      LEFT JOIN semesters s ON m.semester_id = s.id
-      LEFT JOIN academic_sessions ac ON m.session_id = ac.id
-      WHERE m.lecturer_id = ?
-    `;
-    const params: any[] = [lecturerId];
-
-    if (search) {
-      query += ' AND (m.title LIKE ? OR m.course_code LIKE ?)';
-      params.push(`%${search}%`, `%${search}%`);
-    }
-    if (course_code) { query += ' AND m.course_code = ?'; params.push(course_code); }
-
-    const pageNum = Math.max(1, parseInt(String(page)));
-    const limitNum = Math.min(50, 20);
-    const offset = (pageNum - 1) * limitNum;
-
-    const [countRows]: any = await pool.query(
-      query.replace('SELECT m.*, lv.name AS level_name, s.name AS semester_name, ac.session_name', 'SELECT COUNT(*) AS total'),
-      params
+    const lecturer_id = req.user.id;
+    const result = await pool.query(
+      `SELECT m.*, lv.name as level_name, s.name as semester_name, ac.session_name
+       FROM materials m
+       LEFT JOIN levels lv ON m.level_id = lv.id
+       LEFT JOIN semesters s ON m.semester_id = s.id
+       LEFT JOIN academic_sessions ac ON m.session_id = ac.id
+       WHERE m.lecturer_id = $1
+       ORDER BY m.created_at DESC`,
+      [lecturer_id]
     );
-
-    query += ' ORDER BY m.created_at DESC LIMIT ? OFFSET ?';
-    params.push(limitNum, offset);
-
-    const [rows]: any = await pool.query(query, params);
-    const total = countRows[0].total;
-
-    res.json({
-      success: true,
-      data: rows,
-      pagination: { total, page: pageNum, limit: limitNum, pages: Math.ceil(total / limitNum) },
-    });
+    res.json({ success: true, data: result.rows });
   } catch (error) {
     console.error('Get lecturer materials error:', error);
     res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
 
-// ============================================================
-// UPDATE MATERIAL
-// ============================================================
+export const trackDownload = async (req: any, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    await pool.query('UPDATE materials SET download_count = download_count + 1 WHERE id = $1', [id]);
+    await pool.query('INSERT INTO material_downloads (material_id, ip_address) VALUES ($1, $2)', [id, req.ip]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
 export const updateMaterial = async (req: any, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { title, description, course_code, level, semester, academic_session } = req.body;
+    const { title, course_code, level, semester, academic_session, description } = req.body;
+    const file = req.file;
+    const lecturer_id = req.user.id;
 
-    const [rows]: any = await pool.query(
-      'SELECT * FROM materials WHERE id = ? AND lecturer_id = ?',
-      [id, (req as any).user!.id]
-    );
-
-    if (!rows.length) {
-      res.status(404).json({ success: false, message: 'Material not found or access denied.' });
+    const existing = await pool.query('SELECT * FROM materials WHERE id = $1 AND lecturer_id = $2', [id, lecturer_id]);
+    if (existing.rows.length === 0) {
+      res.status(404).json({ success: false, message: 'Material not found.' });
       return;
     }
 
-    const material = rows[0];
-    let fileUrl = material.file_url;
-    let filePublicId = material.file_public_id;
-    let fileName = material.file_name;
-    let fileSize = material.file_size;
+    let file_url = existing.rows[0].file_url;
+    let file_public_id = existing.rows[0].file_public_id;
 
-    // If new file uploaded, replace old one
-    if ((req as any).file) {
-      if ((req as any).file.mimetype !== 'application/pdf') {
-        res.status(400).json({ success: false, message: 'Only PDF files are allowed.' });
-        return;
-      }
-
-      if (filePublicId) {
-        try { await deleteFromCloudinary(filePublicId, 'raw'); } catch (e) { /* non-fatal */ }
-      }
-
-      const uploaded = await uploadToCloudinary((req as any).file.buffer, (req as any).file.originalname, 'biotech-portal/materials', 'raw');
-      fileUrl = uploaded.url;
-      filePublicId = uploaded.public_id;
-      fileName = (req as any).file.originalname;
-      fileSize = (req as any).file.size;
+    if (file) {
+      if (file_public_id) await deleteFromCloudinary(file_public_id);
+      const uploadResult = await uploadToCloudinary(file.buffer, file.originalname);
+      file_url = uploadResult.url;
+      file_public_id = uploadResult.public_id;
     }
 
-    const [levelRows]: any = level ? await pool.query('SELECT id FROM levels WHERE name = ?', [level]) : [[]];
-    const [semesterRows]: any = semester ? await pool.query('SELECT id FROM semesters WHERE name = ?', [semester]) : [[]];
-    const [sessionRows]: any = academic_session ? await pool.query('SELECT id FROM academic_sessions WHERE session_name = ?', [academic_session]) : [[]];
+    const levelResult = await pool.query('SELECT id FROM levels WHERE name = $1', [level]);
+    const semesterResult = await pool.query('SELECT id FROM semesters WHERE name = $1', [semester]);
+    const sessionResult = await pool.query('SELECT id FROM academic_sessions WHERE session_name = $1', [academic_session]);
 
     await pool.query(
-      `UPDATE materials SET
-         title = COALESCE(?, title),
-         description = COALESCE(?, description),
-         course_code = COALESCE(?, course_code),
-         level_id = COALESCE(?, level_id),
-         semester_id = COALESCE(?, semester_id),
-         session_id = COALESCE(?, session_id),
-         file_url = ?, file_public_id = ?, file_name = ?, file_size = ?,
-         updated_at = NOW()
-       WHERE id = ?`,
-      [
-        title?.trim() || null,
-        description?.trim() || null,
-        course_code?.toUpperCase().trim() || null,
-        levelRows.length ? levelRows[0].id : null,
-        semesterRows.length ? semesterRows[0].id : null,
-        sessionRows.length ? sessionRows[0].id : null,
-        fileUrl, filePublicId, fileName, fileSize,
-        id,
-      ]
+      `UPDATE materials SET title=$1, course_code=$2, level_id=$3, semester_id=$4, session_id=$5, description=$6, file_url=$7, file_public_id=$8, updated_at=NOW() WHERE id=$9`,
+      [title, course_code, levelResult.rows[0]?.id, semesterResult.rows[0]?.id, sessionResult.rows[0]?.id, description, file_url, file_public_id, id]
     );
 
-    res.json({ success: true, message: 'Material updated successfully.' });
+    res.json({ success: true, message: 'Material updated.' });
   } catch (error) {
     console.error('Update material error:', error);
     res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
 
-// ============================================================
-// DELETE MATERIAL
-// ============================================================
 export const deleteMaterial = async (req: any, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const user = (req as any).user!;
-
-    let query = 'SELECT * FROM materials WHERE id = ?';
-    const params: any[] = [id];
-
-    // Lecturers can only delete their own
-    if (user.role === 'lecturer') {
-      query += ' AND lecturer_id = ?';
-      params.push(user.id);
-    }
-
-    const [rows]: any = await pool.query(query, params);
-    if (!rows.length) {
-      res.status(404).json({ success: false, message: 'Material not found or access denied.' });
+    const lecturer_id = req.user.id;
+    const existing = await pool.query('SELECT file_public_id FROM materials WHERE id = $1 AND lecturer_id = $2', [id, lecturer_id]);
+    if (existing.rows.length === 0) {
+      res.status(404).json({ success: false, message: 'Material not found.' });
       return;
     }
-
-    const material = rows[0];
-    if (material.file_public_id) {
-      try { await deleteFromCloudinary(material.file_public_id, 'raw'); } catch (e) { /* non-fatal */ }
-    }
-
-    await pool.query('DELETE FROM materials WHERE id = ?', [id]);
-
-    res.json({ success: true, message: 'Material deleted successfully.' });
+    if (existing.rows[0].file_public_id) await deleteFromCloudinary(existing.rows[0].file_public_id);
+    await pool.query('DELETE FROM materials WHERE id = $1', [id]);
+    res.json({ success: true, message: 'Material deleted.' });
   } catch (error) {
-    console.error('Delete material error:', error);
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+export const adminDeleteMaterial = async (req: any, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const existing = await pool.query('SELECT file_public_id FROM materials WHERE id = $1', [id]);
+    if (existing.rows.length === 0) {
+      res.status(404).json({ success: false, message: 'Material not found.' });
+      return;
+    }
+    if (existing.rows[0].file_public_id) await deleteFromCloudinary(existing.rows[0].file_public_id);
+    await pool.query('DELETE FROM materials WHERE id = $1', [id]);
+    res.json({ success: true, message: 'Material deleted.' });
+  } catch (error) {
     res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
