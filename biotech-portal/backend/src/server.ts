@@ -7,8 +7,8 @@ import { testConnection } from './config/database';
 
 import authRoutes from './routes/auth';
 import adminRoutes from './routes/admin';
-import materialRoutes from './routes/materials';
-import paymentRoutes from './routes/payments';
+import materialRoutes from './routes/material';
+import paymentRoutes from './routes/payment';
 import publicRoutes from './routes/public';
 import lecturerRoutes from './routes/lecturer';
 import studentRoutes from './routes/student';
