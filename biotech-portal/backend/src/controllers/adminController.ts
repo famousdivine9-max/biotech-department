@@ -1,427 +1,163 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import pool from '../config/database';
 
-import { uploadImageToCloudinary } from '../services/cloudinaryService';
-
-// ============================================================
-// DASHBOARD ANALYTICS
-// ============================================================
-export const getDashboardStats = async (_req: Request, res: Response): Promise<void> => {
+export const adminLogin = async (req: any, res: Response): Promise<void> => {
   try {
-    const [revenue]: any = await pool.query(
-      "SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE payment_status = 'successful'"
+    const { email, password } = req.body;
+    if (!email || !password) {
+      res.status(400).json({ success: false, message: 'Email and password are required.' });
+      return;
+    }
+    const result = await pool.query('SELECT * FROM admins WHERE email = $1 AND is_active = true', [email]);
+    const admin = result.rows[0];
+    if (!admin) {
+      res.status(401).json({ success: false, message: 'Invalid email or password.' });
+      return;
+    }
+    const isValid = await bcrypt.compare(password, admin.password_hash);
+    if (!isValid) {
+      res.status(401).json({ success: false, message: 'Invalid email or password.' });
+      return;
+    }
+    await pool.query('UPDATE admins SET last_login = NOW() WHERE id = $1', [admin.id]);
+    const token = jwt.sign(
+      { id: admin.id, email: admin.email, role: admin.role, name: admin.full_name },
+      process.env.JWT_SECRET as string,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' } as any
     );
-    const [payments]: any = await pool.query(
-      "SELECT COUNT(*) AS total FROM payments WHERE payment_status = 'successful'"
-    );
-    const [lecturers]: any = await pool.query(
-      "SELECT COUNT(*) AS total, SUM(status='approved') AS approved, SUM(status='pending') AS pending FROM lecturers"
-    );
-    const [materials]: any = await pool.query('SELECT COUNT(*) AS total FROM materials WHERE is_active = 1');
-    const [downloads]: any = await pool.query('SELECT COALESCE(SUM(download_count), 0) AS total FROM materials');
-
-    // Revenue charts
-    const [dailyRevenue]: any = await pool.query(`
-      SELECT DATE(payment_date) AS date, SUM(amount) AS revenue, COUNT(*) AS count
-      FROM payments WHERE payment_status = 'successful' AND payment_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-      GROUP BY DATE(payment_date) ORDER BY date ASC
-    `);
-
-    const [weeklyRevenue]: any = await pool.query(`
-      SELECT YEARWEEK(payment_date, 1) AS week,
-             MIN(DATE(payment_date)) AS week_start,
-             SUM(amount) AS revenue, COUNT(*) AS count
-      FROM payments WHERE payment_status = 'successful' AND payment_date >= DATE_SUB(NOW(), INTERVAL 12 WEEK)
-      GROUP BY YEARWEEK(payment_date, 1) ORDER BY week ASC
-    `);
-
-    const [monthlyRevenue]: any = await pool.query(`
-      SELECT DATE_FORMAT(payment_date, '%Y-%m') AS month, SUM(amount) AS revenue, COUNT(*) AS count
-      FROM payments WHERE payment_status = 'successful' AND payment_date >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
-      GROUP BY DATE_FORMAT(payment_date, '%Y-%m') ORDER BY month ASC
-    `);
-
-    const [annualRevenue]: any = await pool.query(`
-      SELECT YEAR(payment_date) AS year, SUM(amount) AS revenue, COUNT(*) AS count
-      FROM payments WHERE payment_status = 'successful'
-      GROUP BY YEAR(payment_date) ORDER BY year ASC
-    `);
-
-    // Recent activities
-    const [recentActivities]: any = await pool.query(`
-      SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 15
-    `);
-
-    // Recent payments
-    const [recentPayments]: any = await pool.query(`
-      SELECT full_name, matric_number, amount, academic_session, payment_date, payment_status
-      FROM payments ORDER BY created_at DESC LIMIT 10
-    `);
-
     res.json({
       success: true,
       data: {
-        stats: {
-          total_revenue: parseFloat(revenue[0].total),
-          total_payments: payments[0].total,
-          total_lecturers: lecturers[0].total,
-          approved_lecturers: lecturers[0].approved,
-          pending_lecturers: lecturers[0].pending,
-          total_materials: materials[0].total,
-          total_downloads: downloads[0].total,
-        },
-        charts: { dailyRevenue, weeklyRevenue, monthlyRevenue, annualRevenue },
-        recentActivities,
-        recentPayments,
-      },
+        token,
+        user: { id: admin.id, name: admin.full_name, full_name: admin.full_name, email: admin.email, role: admin.role }
+      }
     });
   } catch (error) {
-    console.error('Dashboard stats error:', error);
-    res.status(500).json({ success: false, message: 'Server error.' });
+    console.error('Admin login error:', error);
+    res.status(500).json({ success: false, message: 'Server error during login.' });
   }
 };
 
-// ============================================================
-// LECTURER MANAGEMENT
-// ============================================================
-export const getAllLecturers = async (req: Request, res: Response): Promise<void> => {
+export const lecturerRegister = async (req: any, res: Response): Promise<void> => {
   try {
-    const { status, search, page = '1', limit = '20' } = req.query;
-    let query = `
-      SELECT l.*, a.full_name AS approved_by_name
-      FROM lecturers l
-      LEFT JOIN admins a ON l.approved_by = a.id
-      WHERE 1=1
-    `;
-    const params: any[] = [];
-
-    if (status) { query += ' AND l.status = ?'; params.push(status); }
-    if (search) {
-      query += ' AND (l.full_name LIKE ? OR l.email LIKE ? OR l.staff_id LIKE ?)';
-      const term = `%${search}%`;
-      params.push(term, term, term);
+    const { full_name, email, phone, staff_id, department, password } = req.body;
+    if (!full_name || !email || !phone || !staff_id || !password) {
+      res.status(400).json({ success: false, message: 'All fields are required.' });
+      return;
     }
-
-    const pageNum = Math.max(1, parseInt(String(page)));
-    const limitNum = parseInt(String(limit));
-    const offset = (pageNum - 1) * limitNum;
-
-    const [countRows]: any = await pool.query(
-      query.replace('SELECT l.*, a.full_name AS approved_by_name', 'SELECT COUNT(*) AS total'),
-      params
+    const existing = await pool.query('SELECT id FROM lecturers WHERE email = $1 OR staff_id = $2', [email, staff_id]);
+    if (existing.rows.length > 0) {
+      res.status(409).json({ success: false, message: 'Email or Staff ID already registered.' });
+      return;
+    }
+    const password_hash = await bcrypt.hash(password, 12);
+    await pool.query(
+      'INSERT INTO lecturers (full_name, email, phone, staff_id, department, password_hash, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [full_name, email, phone, staff_id, department || 'Biotechnology', password_hash, 'pending']
     );
+    res.status(201).json({ success: true, message: 'Registration successful. Awaiting admin approval.' });
+  } catch (error) {
+    console.error('Lecturer register error:', error);
+    res.status(500).json({ success: false, message: 'Server error during registration.' });
+  }
+};
 
-    query += ' ORDER BY l.created_at DESC LIMIT ? OFFSET ?';
-    params.push(limitNum, offset);
-
-    const [rows]: any = await pool.query(query, params);
-
+export const lecturerLogin = async (req: any, res: Response): Promise<void> => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      res.status(400).json({ success: false, message: 'Email and password are required.' });
+      return;
+    }
+    const result = await pool.query('SELECT * FROM lecturers WHERE email = $1', [email]);
+    const lecturer = result.rows[0];
+    if (!lecturer) {
+      res.status(401).json({ success: false, message: 'Invalid email or password.' });
+      return;
+    }
+    if (lecturer.status !== 'approved') {
+      res.status(403).json({ success: false, message: 'Your account is pending admin approval or has been suspended.' });
+      return;
+    }
+    const isValid = await bcrypt.compare(password, lecturer.password_hash);
+    if (!isValid) {
+      res.status(401).json({ success: false, message: 'Invalid email or password.' });
+      return;
+    }
+    await pool.query('UPDATE lecturers SET last_login = NOW() WHERE id = $1', [lecturer.id]);
+    const token = jwt.sign(
+      { id: lecturer.id, email: lecturer.email, role: 'lecturer', name: lecturer.full_name },
+      process.env.JWT_SECRET as string,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' } as any
+    );
     res.json({
       success: true,
-      data: rows.map((l: any) => { delete l.password_hash; return l; }),
-      pagination: { total: countRows[0].total, page: pageNum, limit: limitNum },
+      token,
+      data: {
+        token,
+        user: { id: lecturer.id, name: lecturer.full_name, full_name: lecturer.full_name, email: lecturer.email, role: 'lecturer', staff_id: lecturer.staff_id, department: lecturer.department }
+      }
     });
   } catch (error) {
-    console.error('Get all lecturers error:', error);
-    res.status(500).json({ success: false, message: 'Server error.' });
+    console.error('Lecturer login error:', error);
+    res.status(500).json({ success: false, message: 'Server error during login.' });
   }
 };
 
-export const updateLecturerStatus = async (req: any, res: Response): Promise<void> => {
+export const forgotPassword = async (req: any, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
-    const { status, reason } = req.body;
-
-    const validStatuses = ['approved', 'rejected', 'suspended'];
-    if (!validStatuses.includes(status)) {
-      res.status(400).json({ success: false, message: 'Invalid status.' });
+    const { email } = req.body;
+    if (!email) {
+      res.status(400).json({ success: false, message: 'Email is required.' });
       return;
     }
-
-    const [rows]: any = await pool.query('SELECT * FROM lecturers WHERE id = ?', [id]);
-    if (!rows.length) {
-      res.status(404).json({ success: false, message: 'Lecturer not found.' });
+    const result = await pool.query('SELECT id FROM lecturers WHERE email = $1', [email]);
+    if (result.rows.length === 0) {
+      res.json({ success: true, message: 'If that email exists, a reset link has been sent.' });
       return;
     }
-
-    await pool.query(
-      `UPDATE lecturers SET status = ?, approved_by = ?, approved_at = NOW() WHERE id = ?`,
-      [status, (req as any).user!.id, id]
-    );
-
-    await pool.query(
-      'INSERT INTO lecturer_approvals (lecturer_id, admin_id, action, reason) VALUES (?, ?, ?, ?)',
-      [id, (req as any).user!.id, status, reason || null]
-    );
-
-    res.json({ success: true, message: `Lecturer ${status} successfully.` });
+    const token = crypto.randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 3600000);
+    await pool.query('UPDATE lecturers SET password_reset_token = $1, password_reset_expires = $2 WHERE email = $3', [token, expires, email]);
+    res.json({ success: true, message: 'Password reset link sent to your email.' });
   } catch (error) {
-    console.error('Update lecturer status error:', error);
     res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
 
-export const resetLecturerPassword = async (req: any, res: Response): Promise<void> => {
+export const resetPassword = async (req: any, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
-    const { new_password } = req.body;
-
-    if (!new_password || new_password.length < 8) {
-      res.status(400).json({ success: false, message: 'New password must be at least 8 characters.' });
+    const { token, password } = req.body;
+    if (!token || !password) {
+      res.status(400).json({ success: false, message: 'Token and new password are required.' });
       return;
     }
-
-    const password_hash = await bcrypt.hash(new_password, 12);
-    await pool.query('UPDATE lecturers SET password_hash = ? WHERE id = ?', [password_hash, id]);
-
-    await pool.query(
-      `INSERT INTO activity_logs (actor_type, actor_id, actor_name, action, description) VALUES ('admin', ?, ?, 'reset_password', ?)`,
-      [(req as any).user!.id, (req as any).user!.name, `Reset password for lecturer ID ${id}`]
-    );
-
-    res.json({ success: true, message: 'Lecturer password reset successfully.' });
-  } catch (error) {
-    console.error('Reset lecturer password error:', error);
-    res.status(500).json({ success: false, message: 'Server error.' });
-  }
-};
-
-export const deleteLecturer = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { id } = req.params;
-    await pool.query('DELETE FROM lecturers WHERE id = ?', [id]);
-    res.json({ success: true, message: 'Lecturer deleted successfully.' });
-  } catch (error) {
-    console.error('Delete lecturer error:', error);
-    res.status(500).json({ success: false, message: 'Server error.' });
-  }
-};
-
-// ============================================================
-// PAYMENT MANAGEMENT
-// ============================================================
-export const getAllPayments = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { search, session, status, level, date_from, date_to, page = '1', limit = '20' } = req.query;
-
-    let query = 'SELECT p.*, r.receipt_number FROM payments p LEFT JOIN receipts r ON p.id = r.payment_id WHERE 1=1';
-    const params: any[] = [];
-
-    if (search) {
-      query += ' AND (p.full_name LIKE ? OR p.matric_number LIKE ? OR r.receipt_number LIKE ?)';
-      const term = `%${search}%`;
-      params.push(term, term, term);
-    }
-    if (session) { query += ' AND p.academic_session = ?'; params.push(session); }
-    if (status) { query += ' AND p.payment_status = ?'; params.push(status); }
-    if (level) { query += ' AND p.level = ?'; params.push(level); }
-    if (date_from) { query += ' AND DATE(p.payment_date) >= ?'; params.push(date_from); }
-    if (date_to) { query += ' AND DATE(p.payment_date) <= ?'; params.push(date_to); }
-
-    const pageNum = Math.max(1, parseInt(String(page)));
-    const limitNum = parseInt(String(limit));
-    const offset = (pageNum - 1) * limitNum;
-
-    const [countRows]: any = await pool.query(
-      query.replace('SELECT p.*, r.receipt_number', 'SELECT COUNT(*) AS total'),
-      params
-    );
-
-    query += ' ORDER BY p.created_at DESC LIMIT ? OFFSET ?';
-    params.push(limitNum, offset);
-
-    const [rows]: any = await pool.query(query, params);
-
-    res.json({
-      success: true,
-      data: rows,
-      pagination: { total: countRows[0].total, page: pageNum, limit: limitNum },
-    });
-  } catch (error) {
-    console.error('Get all payments error:', error);
-    res.status(500).json({ success: false, message: 'Server error.' });
-  }
-};
-
-// ============================================================
-// SETTINGS MANAGEMENT
-// ============================================================
-export const getSettings = async (_req: Request, res: Response): Promise<void> => {
-  try {
-    const [rows]: any = await pool.query('SELECT setting_key, setting_value, setting_type, description FROM settings');
-    const settings: Record<string, string> = {};
-    rows.forEach((r: any) => { settings[r.setting_key] = r.setting_value; });
-    res.json({ success: true, data: settings, raw: rows });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Server error.' });
-  }
-};
-
-export const updateSetting = async (req: any, res: Response): Promise<void> => {
-  try {
-    const { key } = req.params;
-    const { value } = req.body;
-
-    await pool.query(
-      'UPDATE settings SET setting_value = ?, updated_by = ? WHERE setting_key = ?',
-      [value, (req as any).user!.id, key]
-    );
-
-    res.json({ success: true, message: 'Setting updated.' });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Server error.' });
-  }
-};
-
-export const updateBulkSettings = async (req: any, res: Response): Promise<void> => {
-  try {
-    const { settings } = req.body;
-
-    if (!settings || typeof settings !== 'object') {
-      res.status(400).json({ success: false, message: 'Settings object required.' });
+    const result = await pool.query('SELECT id FROM lecturers WHERE password_reset_token = $1 AND password_reset_expires > NOW()', [token]);
+    if (result.rows.length === 0) {
+      res.status(400).json({ success: false, message: 'Invalid or expired reset token.' });
       return;
     }
-
-    for (const [key, value] of Object.entries(settings)) {
-      await pool.query(
-        'UPDATE settings SET setting_value = ?, updated_by = ? WHERE setting_key = ?',
-        [value, (req as any).user!.id, key]
-      );
-    }
-
-    res.json({ success: true, message: 'Settings updated successfully.' });
-  } catch (error) {
-    console.error('Update bulk settings error:', error);
-    res.status(500).json({ success: false, message: 'Server error.' });
-  }
-};
-
-export const uploadBrandingImage = async (req: any, res: Response): Promise<void> => {
-  try {
-    if (!(req as any).file) {
-      res.status(400).json({ success: false, message: 'Image file is required.' });
-      return;
-    }
-
-    const { type } = req.params;
-    const validTypes = ['department_logo', 'faculty_logo', 'homepage_banner', 'favicon'];
-
-    if (!validTypes.includes(type)) {
-      res.status(400).json({ success: false, message: 'Invalid image type.' });
-      return;
-    }
-
-    const { url } = await uploadImageToCloudinary(
-      (req as any).file.buffer,
-      (req as any).file.originalname,
-      'biotech-portal/branding'
-    );
-
-    await pool.query(
-      'UPDATE settings SET setting_value = ?, updated_by = ? WHERE setting_key = ?',
-      [url, (req as any).user!.id, type]
-    );
-
-    res.json({ success: true, message: 'Image uploaded successfully.', data: { url } });
-  } catch (error) {
-    console.error('Upload branding image error:', error);
-    res.status(500).json({ success: false, message: 'Failed to upload image.' });
-  }
-};
-
-// ============================================================
-// ACADEMIC SETTINGS
-// ============================================================
-export const getAcademicData = async (_req: Request, res: Response): Promise<void> => {
-  try {
-    const [sessions]: any = await pool.query('SELECT * FROM academic_sessions ORDER BY session_name DESC');
-    const [levels]: any = await pool.query('SELECT * FROM levels ORDER BY sort_order ASC');
-    const [semesters]: any = await pool.query('SELECT * FROM semesters ORDER BY id ASC');
-    const [courses]: any = await pool.query(`
-      SELECT c.*, l.name AS level_name, s.name AS semester_name
-      FROM courses c
-      LEFT JOIN levels l ON c.level_id = l.id
-      LEFT JOIN semesters s ON c.semester_id = s.id
-      ORDER BY c.course_code ASC
-    `);
-
-    res.json({ success: true, data: { sessions, levels, semesters, courses } });
+    const password_hash = await bcrypt.hash(password, 12);
+    await pool.query('UPDATE lecturers SET password_hash = $1, password_reset_token = NULL, password_reset_expires = NULL WHERE id = $2', [password_hash, result.rows[0].id]);
+    res.json({ success: true, message: 'Password reset successful.' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
 
-export const createAcademicSession = async (req: any, res: Response): Promise<void> => {
+export const getProfile = async (req: any, res: Response): Promise<void> => {
   try {
-    const { session_name, is_current } = req.body;
-
-    if (is_current) {
-      await pool.query('UPDATE academic_sessions SET is_current = 0');
+    const user = req.user;
+    if (user.role === 'lecturer') {
+      const result = await pool.query('SELECT id, full_name, email, phone, staff_id, department, status, created_at FROM lecturers WHERE id = $1', [user.id]);
+      res.json({ success: true, data: result.rows[0] });
+    } else {
+      const result = await pool.query('SELECT id, full_name, email, role, created_at FROM admins WHERE id = $1', [user.id]);
+      res.json({ success: true, data: result.rows[0] });
     }
-
-    await pool.query(
-      'INSERT INTO academic_sessions (session_name, is_current) VALUES (?, ?)',
-      [session_name, is_current ? 1 : 0]
-    );
-
-    res.status(201).json({ success: true, message: 'Academic session created.' });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Server error.' });
-  }
-};
-
-export const createCourse = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { course_code, course_title, level_id, semester_id, credit_units } = req.body;
-
-    await pool.query(
-      'INSERT INTO courses (course_code, course_title, level_id, semester_id, credit_units) VALUES (?, ?, ?, ?, ?)',
-      [course_code.toUpperCase().trim(), course_title.trim(), level_id || null, semester_id || null, credit_units || 2]
-    );
-
-    res.status(201).json({ success: true, message: 'Course created successfully.' });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Server error or duplicate course code.' });
-  }
-};
-
-// ============================================================
-// ANNOUNCEMENTS
-// ============================================================
-export const createAnnouncement = async (req: any, res: Response): Promise<void> => {
-  try {
-    const { title, content, is_published, expires_at } = req.body;
-
-    await pool.query(
-      `INSERT INTO announcements (title, content, admin_id, is_published, published_at, expires_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [
-        title.trim(),
-        content.trim(),
-        (req as any).user!.id,
-        is_published ? 1 : 0,
-        is_published ? new Date() : null,
-        expires_at || null,
-      ]
-    );
-
-    res.status(201).json({ success: true, message: 'Announcement created.' });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Server error.' });
-  }
-};
-
-export const getAnnouncements = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { published_only } = req.query;
-    let query = 'SELECT * FROM announcements WHERE 1=1';
-    if (published_only === 'true') {
-      query += ' AND is_published = 1 AND (expires_at IS NULL OR expires_at > NOW())';
-    }
-    query += ' ORDER BY created_at DESC';
-    const [rows]: any = await pool.query(query);
-    res.json({ success: true, data: rows });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server error.' });
   }
