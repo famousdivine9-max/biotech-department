@@ -1,6 +1,3 @@
-// ============================================================
-// auth.ts
-// ============================================================
 import { Router } from 'express';
 import {
   adminLogin,
@@ -8,7 +5,7 @@ import {
   lecturerRegister,
   forgotPassword,
   resetPassword,
-  getProfile,
+  getProfile
 } from '../controllers/authController';
 import { authenticate } from '../middleware/auth';
 
