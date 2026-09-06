@@ -1,163 +1,205 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import crypto from 'crypto';
 import pool from '../config/database';
 
-export const adminLogin = async (req: any, res: Response): Promise<void> => {
+export const getDashboardStats = async (req: any, res: Response): Promise<void> => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      res.status(400).json({ success: false, message: 'Email and password are required.' });
-      return;
-    }
-    const result = await pool.query('SELECT * FROM admins WHERE email = $1 AND is_active = true', [email]);
-    const admin = result.rows[0];
-    if (!admin) {
-      res.status(401).json({ success: false, message: 'Invalid email or password.' });
-      return;
-    }
-    const isValid = await bcrypt.compare(password, admin.password_hash);
-    if (!isValid) {
-      res.status(401).json({ success: false, message: 'Invalid email or password.' });
-      return;
-    }
-    await pool.query('UPDATE admins SET last_login = NOW() WHERE id = $1', [admin.id]);
-    const token = jwt.sign(
-      { id: admin.id, email: admin.email, role: admin.role, name: admin.full_name },
-      process.env.JWT_SECRET as string,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' } as any
-    );
+    const [revenue, payments, lecturers, materials, downloads, pending] = await Promise.all([
+      pool.query("SELECT COALESCE(SUM(amount_paid), 0) as total FROM receipts"),
+      pool.query("SELECT COUNT(*) as total FROM payments WHERE payment_status = 'successful'"),
+      pool.query("SELECT COUNT(*) as total FROM lecturers"),
+      pool.query("SELECT COUNT(*) as total FROM materials"),
+      pool.query("SELECT COALESCE(SUM(download_count), 0) as total FROM materials"),
+      pool.query("SELECT COUNT(*) as total FROM lecturers WHERE status = 'pending'"),
+    ]);
+    const activity = await pool.query("SELECT 'payment' as type, 'Payment received' as description, created_at FROM payments WHERE payment_status = 'successful' ORDER BY created_at DESC LIMIT 10");
     res.json({
       success: true,
-      data: {
-        token,
-        user: { id: admin.id, name: admin.full_name, full_name: admin.full_name, email: admin.email, role: admin.role }
-      }
+      cards: {
+        total_revenue: parseFloat(revenue.rows[0].total),
+        total_payments: parseInt(payments.rows[0].total),
+        total_lecturers: parseInt(lecturers.rows[0].total),
+        total_materials: parseInt(materials.rows[0].total),
+        total_downloads: parseInt(downloads.rows[0].total),
+        pending_lecturers: parseInt(pending.rows[0].total),
+      },
+      charts: { daily: [], weekly: [], monthly: [], annual: [] },
+      recent_activity: activity.rows
     });
   } catch (error) {
-    console.error('Admin login error:', error);
-    res.status(500).json({ success: false, message: 'Server error during login.' });
+    console.error('Dashboard error:', error);
+    res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
 
-export const lecturerRegister = async (req: any, res: Response): Promise<void> => {
+export const getAllLecturers = async (req: any, res: Response): Promise<void> => {
   try {
-    const { full_name, email, phone, staff_id, department, password } = req.body;
-    if (!full_name || !email || !phone || !staff_id || !password) {
-      res.status(400).json({ success: false, message: 'All fields are required.' });
-      return;
-    }
-    const existing = await pool.query('SELECT id FROM lecturers WHERE email = $1 OR staff_id = $2', [email, staff_id]);
-    if (existing.rows.length > 0) {
-      res.status(409).json({ success: false, message: 'Email or Staff ID already registered.' });
-      return;
-    }
-    const password_hash = await bcrypt.hash(password, 12);
-    await pool.query(
-      'INSERT INTO lecturers (full_name, email, phone, staff_id, department, password_hash, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [full_name, email, phone, staff_id, department || 'Biotechnology', password_hash, 'pending']
-    );
-    res.status(201).json({ success: true, message: 'Registration successful. Awaiting admin approval.' });
+    const { search = '', status = '' } = req.query;
+    let query = 'SELECT l.*, (SELECT COUNT(*) FROM materials m WHERE m.lecturer_id = l.id) as material_count FROM lecturers l WHERE 1=1';
+    const params: any[] = [];
+    let idx = 1;
+    if (search) { query += ` AND (l.full_name ILIKE $${idx} OR l.email ILIKE $${idx+1} OR l.staff_id ILIKE $${idx+2})`; params.push(`%${search}%`, `%${search}%`, `%${search}%`); idx += 3; }
+    if (status) { query += ` AND l.status = $${idx}`; params.push(status); idx++; }
+    query += ' ORDER BY l.created_at DESC';
+    const result = await pool.query(query, params);
+    res.json({ success: true, lecturers: result.rows, total: result.rows.length });
   } catch (error) {
-    console.error('Lecturer register error:', error);
-    res.status(500).json({ success: false, message: 'Server error during registration.' });
+    console.error('Get lecturers error:', error);
+    res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
 
-export const lecturerLogin = async (req: any, res: Response): Promise<void> => {
+export const updateLecturerStatus = async (req: any, res: Response): Promise<void> => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      res.status(400).json({ success: false, message: 'Email and password are required.' });
-      return;
-    }
-    const result = await pool.query('SELECT * FROM lecturers WHERE email = $1', [email]);
-    const lecturer = result.rows[0];
-    if (!lecturer) {
-      res.status(401).json({ success: false, message: 'Invalid email or password.' });
-      return;
-    }
-    if (lecturer.status !== 'approved') {
-      res.status(403).json({ success: false, message: 'Your account is pending admin approval or has been suspended.' });
-      return;
-    }
-    const isValid = await bcrypt.compare(password, lecturer.password_hash);
-    if (!isValid) {
-      res.status(401).json({ success: false, message: 'Invalid email or password.' });
-      return;
-    }
-    await pool.query('UPDATE lecturers SET last_login = NOW() WHERE id = $1', [lecturer.id]);
-    const token = jwt.sign(
-      { id: lecturer.id, email: lecturer.email, role: 'lecturer', name: lecturer.full_name },
-      process.env.JWT_SECRET as string,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' } as any
-    );
-    res.json({
-      success: true,
-      token,
-      data: {
-        token,
-        user: { id: lecturer.id, name: lecturer.full_name, full_name: lecturer.full_name, email: lecturer.email, role: 'lecturer', staff_id: lecturer.staff_id, department: lecturer.department }
-      }
-    });
-  } catch (error) {
-    console.error('Lecturer login error:', error);
-    res.status(500).json({ success: false, message: 'Server error during login.' });
-  }
-};
-
-export const forgotPassword = async (req: any, res: Response): Promise<void> => {
-  try {
-    const { email } = req.body;
-    if (!email) {
-      res.status(400).json({ success: false, message: 'Email is required.' });
-      return;
-    }
-    const result = await pool.query('SELECT id FROM lecturers WHERE email = $1', [email]);
-    if (result.rows.length === 0) {
-      res.json({ success: true, message: 'If that email exists, a reset link has been sent.' });
-      return;
-    }
-    const token = crypto.randomBytes(32).toString('hex');
-    const expires = new Date(Date.now() + 3600000);
-    await pool.query('UPDATE lecturers SET password_reset_token = $1, password_reset_expires = $2 WHERE email = $3', [token, expires, email]);
-    res.json({ success: true, message: 'Password reset link sent to your email.' });
+    const { id } = req.params;
+    const { status } = req.body;
+    await pool.query('UPDATE lecturers SET status = $1, updated_at = NOW() WHERE id = $2', [status, id]);
+    res.json({ success: true, message: `Lecturer ${status} successfully.` });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
 
-export const resetPassword = async (req: any, res: Response): Promise<void> => {
+export const resetLecturerPassword = async (req: any, res: Response): Promise<void> => {
   try {
-    const { token, password } = req.body;
-    if (!token || !password) {
-      res.status(400).json({ success: false, message: 'Token and new password are required.' });
-      return;
-    }
-    const result = await pool.query('SELECT id FROM lecturers WHERE password_reset_token = $1 AND password_reset_expires > NOW()', [token]);
-    if (result.rows.length === 0) {
-      res.status(400).json({ success: false, message: 'Invalid or expired reset token.' });
-      return;
-    }
-    const password_hash = await bcrypt.hash(password, 12);
-    await pool.query('UPDATE lecturers SET password_hash = $1, password_reset_token = NULL, password_reset_expires = NULL WHERE id = $2', [password_hash, result.rows[0].id]);
-    res.json({ success: true, message: 'Password reset successful.' });
+    const { id } = req.params;
+    const temp_password = Math.random().toString(36).slice(-8);
+    const password_hash = await bcrypt.hash(temp_password, 12);
+    await pool.query('UPDATE lecturers SET password_hash = $1 WHERE id = $2', [password_hash, id]);
+    res.json({ success: true, temp_password });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
 
-export const getProfile = async (req: any, res: Response): Promise<void> => {
+export const deleteLecturer = async (req: any, res: Response): Promise<void> => {
   try {
-    const user = req.user;
-    if (user.role === 'lecturer') {
-      const result = await pool.query('SELECT id, full_name, email, phone, staff_id, department, status, created_at FROM lecturers WHERE id = $1', [user.id]);
-      res.json({ success: true, data: result.rows[0] });
-    } else {
-      const result = await pool.query('SELECT id, full_name, email, role, created_at FROM admins WHERE id = $1', [user.id]);
-      res.json({ success: true, data: result.rows[0] });
+    const { id } = req.params;
+    await pool.query('DELETE FROM lecturers WHERE id = $1', [id]);
+    res.json({ success: true, message: 'Lecturer deleted.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+export const getAllPayments = async (req: any, res: Response): Promise<void> => {
+  try {
+    const { search = '', status = 'successful' } = req.query;
+    let query = `SELECT p.*, r.receipt_number FROM payments p LEFT JOIN receipts r ON p.id = r.payment_id WHERE 1=1`;
+    const params: any[] = [];
+    let idx = 1;
+    if (status) { query += ` AND p.payment_status = $${idx}`; params.push(status); idx++; }
+    if (search) { query += ` AND (p.full_name ILIKE $${idx} OR p.matric_number ILIKE $${idx+1} OR r.receipt_number ILIKE $${idx+2})`; params.push(`%${search}%`, `%${search}%`, `%${search}%`); idx += 3; }
+    query += ' ORDER BY p.created_at DESC LIMIT 50';
+    const result = await pool.query(query, params);
+    const totalRevenue = await pool.query("SELECT COALESCE(SUM(amount_paid), 0) as total FROM receipts");
+    res.json({ success: true, payments: result.rows, total: result.rows.length, total_revenue: parseFloat(totalRevenue.rows[0].total) });
+  } catch (error) {
+    console.error('Get payments error:', error);
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+export const getSettings = async (req: any, res: Response): Promise<void> => {
+  try {
+    const result = await pool.query('SELECT setting_key, setting_value FROM settings');
+    const settings: any = {};
+    result.rows.forEach((row: any) => { settings[row.setting_key] = row.setting_value; });
+    res.json({ success: true, settings });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+export const updateBulkSettings = async (req: any, res: Response): Promise<void> => {
+  try {
+    const { settings } = req.body;
+    for (const [key, value] of Object.entries(settings)) {
+      await pool.query('UPDATE settings SET setting_value = $1, updated_at = NOW() WHERE setting_key = $2', [value, key]);
     }
+    res.json({ success: true, message: 'Settings updated.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+export const updateSetting = async (req: any, res: Response): Promise<void> => {
+  try {
+    const { key, value } = req.body;
+    await pool.query('UPDATE settings SET setting_value = $1, updated_at = NOW() WHERE setting_key = $2', [value, key]);
+    res.json({ success: true, message: 'Setting updated.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+export const uploadBrandingImage = async (req: any, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, url: '' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+export const getAcademicData = async (req: any, res: Response): Promise<void> => {
+  try {
+    const [sessions, levels, semesters, courses] = await Promise.all([
+      pool.query('SELECT * FROM academic_sessions ORDER BY created_at DESC'),
+      pool.query('SELECT * FROM levels ORDER BY sort_order'),
+      pool.query('SELECT * FROM semesters ORDER BY id'),
+      pool.query(`SELECT c.*, l.name as level_name, s.name as semester_name FROM courses c LEFT JOIN levels l ON c.level_id = l.id LEFT JOIN semesters s ON c.semester_id = s.id ORDER BY c.course_code`),
+    ]);
+    res.json({ success: true, data: { sessions: sessions.rows, levels: levels.rows, semesters: semesters.rows, courses: courses.rows } });
+  } catch (error) {
+    console.error('Academic data error:', error);
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+export const createAcademicSession = async (req: any, res: Response): Promise<void> => {
+  try {
+    const { session_name } = req.body;
+    await pool.query('INSERT INTO academic_sessions (session_name) VALUES ($1)', [session_name]);
+    res.json({ success: true, message: 'Session created.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+export const createCourse = async (req: any, res: Response): Promise<void> => {
+  try {
+    const { course_code, course_title, level_id, semester_id } = req.body;
+    await pool.query('INSERT INTO courses (course_code, course_title, level_id, semester_id) VALUES ($1, $2, $3, $4)', [course_code, course_title, level_id, semester_id]);
+    res.json({ success: true, message: 'Course created.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+export const getAnnouncements = async (req: any, res: Response): Promise<void> => {
+  try {
+    const result = await pool.query('SELECT * FROM announcements ORDER BY created_at DESC');
+    res.json({ success: true, announcements: result.rows });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+export const createAnnouncement = async (req: any, res: Response): Promise<void> => {
+  try {
+    const { title, content, expires_at } = req.body;
+    await pool.query('INSERT INTO announcements (title, content, is_published, published_at, expires_at) VALUES ($1, $2, true, NOW(), $3)', [title, content, expires_at || null]);
+    res.json({ success: true, message: 'Announcement created.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+export const deleteAnnouncement = async (req: any, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM announcements WHERE id = $1', [id]);
+    res.json({ success: true, message: 'Announcement deleted.' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server error.' });
   }
