@@ -1,5 +1,4 @@
 import express from 'express';
-import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import { testConnection } from './config/database';
@@ -16,24 +15,25 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+app.use((req: any, res: any, next: any) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
   if (req.method === 'OPTIONS') {
-    res.sendStatus(200);
+    res.status(200).end();
     return;
   }
   next();
 });
 
-app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
 app.use(limiter);
 
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (req: any, res: any) => {
   res.json({ success: true, message: 'Biotechnology Portal API is running', timestamp: new Date().toISOString(), environment: process.env.NODE_ENV });
 });
 
@@ -46,7 +46,7 @@ app.use('/api/lecturer', lecturerRoutes);
 app.use('/api/student', studentRoutes);
 app.use('/api/settings', settingsRoutes);
 
-app.use((req, res) => {
+app.use((req: any, res: any) => {
   res.status(404).json({ success: false, message: 'Route not found' });
 });
 
