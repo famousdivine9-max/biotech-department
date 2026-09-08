@@ -19,7 +19,7 @@ const PORT = process.env.PORT || 5000;
 
 app.use(helmet());
 app.use(cors({
-  origin: '*',
+  origin: true,
   credentials: true,
 }));
 app.use(express.json());
