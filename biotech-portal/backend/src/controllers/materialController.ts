@@ -10,12 +10,12 @@ cloudinary.v2.config({
 
 async function uploadToCloudinary(buffer: Buffer, filename: string): Promise<{ url: string; public_id: string }> {
   return new Promise((resolve, reject) => {
+    const cleanName = filename.replace(/\.[^/.]+$/, '');
     const stream = cloudinary.v2.uploader.upload_stream(
       {
-        resource_type: 'auto',
+        resource_type: 'raw',
         folder: 'biotech-materials',
-        public_id: filename.replace(/\.[^/.]+$/, ''),
-        format: 'pdf'
+        public_id: cleanName + '.pdf',
       },
       (error, result) => {
         if (error) reject(error);
@@ -29,7 +29,6 @@ async function uploadToCloudinary(buffer: Buffer, filename: string): Promise<{ u
 async function deleteFromCloudinary(public_id: string): Promise<void> {
   try {
     await cloudinary.v2.uploader.destroy(public_id, { resource_type: 'raw' });
-    await cloudinary.v2.uploader.destroy(public_id, { resource_type: 'image' });
   } catch (e) {}
 }
 
