@@ -16,6 +16,8 @@ async function uploadToCloudinary(buffer: Buffer, filename: string): Promise<{ u
         resource_type: 'raw',
         folder: 'biotech-materials',
         public_id: cleanName + '.pdf',
+        access_mode: 'public',
+        type: 'upload'
       },
       (error: any, result: any) => {
         if (error) {
@@ -41,10 +43,10 @@ export const uploadMaterial = async (req: any, res: Response): Promise<void> => 
   try {
     const { title, course_code, level, semester, academic_session, description } = req.body;
     const file = req.file;
-    
+
     console.log('Upload request body:', req.body);
     console.log('Upload file:', file ? file.originalname : 'NO FILE');
-    
+
     if (!title || !course_code || !level || !semester || !academic_session) {
       res.status(400).json({ success: false, message: 'All fields are required.' });
       return;
@@ -53,28 +55,28 @@ export const uploadMaterial = async (req: any, res: Response): Promise<void> => 
       res.status(400).json({ success: false, message: 'PDF file is required.' });
       return;
     }
-    
+
     const lecturer_id = req.user.id;
     const levelResult = await pool.query('SELECT id FROM levels WHERE name = $1', [level]);
     const semesterResult = await pool.query('SELECT id FROM semesters WHERE name = $1', [semester]);
     const sessionResult = await pool.query('SELECT id FROM academic_sessions WHERE session_name = $1', [academic_session]);
     const courseResult = await pool.query('SELECT id FROM courses WHERE course_code = $1', [course_code]);
-    
+
     const level_id = levelResult.rows[0]?.id || null;
     const semester_id = semesterResult.rows[0]?.id || null;
     const session_id = sessionResult.rows[0]?.id || null;
     const course_id = courseResult.rows[0]?.id || null;
-    
+
     console.log('Uploading to Cloudinary...');
     const uploadResult = await uploadToCloudinary(file.buffer, file.originalname);
     console.log('Cloudinary upload result:', uploadResult);
-    
+
     await pool.query(
       `INSERT INTO materials (lecturer_id, title, description, course_code, course_id, level_id, semester_id, session_id, file_url, file_public_id, file_size, file_name)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [lecturer_id, title, description || '', course_code, course_id, level_id, semester_id, session_id, uploadResult.url, uploadResult.public_id, file.size, file.originalname]
     );
-    
+
     res.json({ success: true, message: 'Material uploaded successfully.' });
   } catch (error: any) {
     console.error('Upload error:', error);
