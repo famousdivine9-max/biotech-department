@@ -4,7 +4,6 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import { testConnection } from './config/database';
-
 import authRoutes from './routes/auth';
 import adminRoutes from './routes/admin';
 import materialRoutes from './routes/material';
@@ -15,18 +14,16 @@ import studentRoutes from './routes/student';
 import settingsRoutes from './routes/settings';
 
 dotenv.config();
-
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
+  origin: '*',
   credentials: true,
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
 app.use(limiter);
 
@@ -55,5 +52,4 @@ const start = async () => {
 };
 
 start();
-
 export default app;
