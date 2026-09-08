@@ -40,7 +40,10 @@ export default function MaterialsPage() {
   async function handleDownload(id: number, fileUrl: string) {
     try {
       await fetch(API + '/materials/download/' + id, { method: 'POST' });
-      window.open(fileUrl, '_blank');
+      const pdfUrl = fileUrl.includes('cloudinary')
+        ? fileUrl.replace('/upload/', '/upload/fl_attachment/')
+        : fileUrl;
+      window.open(pdfUrl, '_blank');
     } catch (e) {}
   }
 
@@ -54,7 +57,6 @@ export default function MaterialsPage() {
 
         {msg && <div style={{ background: '#fef2f2', color: '#dc2626', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '14px' }}>{msg}</div>}
 
-        {/* Filters */}
         <div style={{ background: 'white', borderRadius: '16px', padding: '16px', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
           <input value={search} onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && fetchMaterials()}
@@ -80,7 +82,6 @@ export default function MaterialsPage() {
           </button>
         </div>
 
-        {/* Materials */}
         {loading ? (
           <div style={{ textAlign: 'center', padding: '48px', color: '#9ca3af' }}>Loading materials...</div>
         ) : materials.length === 0 ? (
