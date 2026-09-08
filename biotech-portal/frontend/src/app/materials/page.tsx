@@ -37,13 +37,16 @@ export default function MaterialsPage() {
     setLoading(false);
   }
 
-  async function handleDownload(id: number, fileUrl: string) {
+  async function handleDownload(id: number, fileUrl: string, title: string) {
     try {
       await fetch(API + '/materials/download/' + id, { method: 'POST' });
-      const pdfUrl = fileUrl.includes('cloudinary')
-        ? fileUrl.replace('/upload/', '/upload/fl_attachment/')
-        : fileUrl;
-      window.open(pdfUrl, '_blank');
+      const link = document.createElement('a');
+      link.href = fileUrl;
+      link.download = title + '.pdf';
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     } catch (e) {}
   }
 
@@ -102,7 +105,7 @@ export default function MaterialsPage() {
                     By {m.lecturer_name} · {m.download_count || 0} downloads
                   </p>
                 </div>
-                <button onClick={() => handleDownload(m.id, m.file_url)}
+                <button onClick={() => handleDownload(m.id, m.file_url, m.title)}
                   style={{ background: '#15803d', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', flexShrink: 0 }}>
                   Download
                 </button>
