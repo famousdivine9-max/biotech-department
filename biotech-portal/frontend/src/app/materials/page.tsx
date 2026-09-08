@@ -40,8 +40,9 @@ export default function MaterialsPage() {
   async function handleDownload(id: number, fileUrl: string, title: string) {
     try {
       await fetch(API + '/materials/download/' + id, { method: 'POST' });
+      const pdfUrl = fileUrl.endsWith('.pdf') ? fileUrl : fileUrl + '.pdf';
       const link = document.createElement('a');
-      link.href = fileUrl;
+      link.href = pdfUrl;
       link.download = title + '.pdf';
       link.target = '_blank';
       document.body.appendChild(link);
