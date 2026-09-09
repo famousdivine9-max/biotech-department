@@ -123,90 +123,172 @@ export const downloadReceipt = async (req: any, res: Response): Promise<void> =>
     }
     const r = result.rows[0];
 
+    // Get logos from settings
+    const settingsResult = await pool.query(
+      "SELECT setting_key, setting_value FROM settings WHERE setting_key IN ('department_logo', 'faculty_logo', 'department_name', 'university_name')"
+    );
+    const s: any = {};
+    settingsResult.rows.forEach((row: any) => { s[row.setting_key] = row.setting_value; });
+
+    const deptLogo = s.department_logo || '';
+    const fulLogo = s.faculty_logo || '';
+    const deptName = s.department_name || 'Department of Biotechnology';
+    const uniName = s.university_name || 'Federal University Lokoja';
+
     const html = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
 <title>Receipt ${r.receipt_number}</title>
 <style>
-  body { font-family: Arial, sans-serif; margin: 0; padding: 40px; color: #1f2937; background: white; }
-  .header { text-align: center; border-bottom: 3px solid #15803d; padding-bottom: 20px; margin-bottom: 30px; }
-  .logo { font-size: 22px; font-weight: bold; color: #15803d; }
-  .subtitle { color: #6b7280; font-size: 13px; margin: 3px 0; }
-  .receipt-title { font-size: 18px; font-weight: bold; text-align: center; margin: 20px 0 10px; color: #1f2937; }
-  .receipt-number { background: #f0fdf4; border: 2px solid #15803d; padding: 8px 20px; border-radius: 8px; display: inline-block; font-family: monospace; font-size: 16px; font-weight: bold; color: #15803d; }
-  .receipt-number-wrap { text-align: center; margin-bottom: 24px; }
-  .details { margin: 20px 0; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
-  .row { display: flex; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #f3f4f6; }
-  .row:last-child { border-bottom: none; }
-  .label { color: #6b7280; font-size: 13px; }
-  .value { font-weight: 600; font-size: 13px; text-align: right; }
-  .amount-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px 20px; margin: 20px 0; display: flex; justify-content: space-between; align-items: center; }
-  .amount-label { font-size: 16px; font-weight: bold; color: #1f2937; }
-  .amount-value { font-size: 24px; font-weight: bold; color: #15803d; }
-  .stamp-wrap { text-align: center; margin: 24px 0; }
-  .stamp { border: 3px solid #15803d; border-radius: 50%; width: 80px; height: 80px; display: inline-flex; align-items: center; justify-content: center; color: #15803d; font-weight: bold; font-size: 13px; text-align: center; line-height: 1.2; }
-  .footer { text-align: center; margin-top: 30px; padding-top: 16px; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 11px; }
-  @media print { body { padding: 20px; } }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { 
+    font-family: Arial, sans-serif; 
+    width: 80mm; 
+    margin: 0 auto; 
+    padding: 8mm 5mm; 
+    color: #1f2937; 
+    background: white;
+    font-size: 11px;
+  }
+  .logos { 
+    display: flex; 
+    justify-content: center; 
+    align-items: center; 
+    gap: 10px; 
+    margin-bottom: 8px; 
+  }
+  .logo-img { 
+    width: 40px; 
+    height: 40px; 
+    object-fit: contain; 
+    border-radius: 50%;
+  }
+  .header { text-align: center; border-bottom: 2px solid #15803d; padding-bottom: 8px; margin-bottom: 8px; }
+  .dept-name { font-size: 12px; font-weight: bold; color: #15803d; line-height: 1.3; }
+  .uni-name { font-size: 10px; color: #6b7280; margin-top: 2px; }
+  .receipt-title { 
+    text-align: center; 
+    font-size: 11px; 
+    font-weight: bold; 
+    text-transform: uppercase; 
+    letter-spacing: 1px;
+    margin: 8px 0 4px;
+    color: #1f2937;
+  }
+  .receipt-number { 
+    text-align: center;
+    background: #f0fdf4; 
+    border: 1px solid #15803d; 
+    padding: 4px 8px; 
+    border-radius: 4px; 
+    font-family: monospace; 
+    font-size: 12px; 
+    font-weight: bold; 
+    color: #15803d;
+    margin-bottom: 8px;
+  }
+  .divider { border: none; border-top: 1px dashed #d1d5db; margin: 6px 0; }
+  .row { display: flex; justify-content: space-between; padding: 3px 0; }
+  .label { color: #6b7280; font-size: 10px; flex: 1; }
+  .value { font-weight: 600; font-size: 10px; text-align: right; flex: 1; }
+  .amount-box { 
+    background: #f0fdf4; 
+    border: 1px solid #15803d; 
+    border-radius: 4px; 
+    padding: 6px 8px; 
+    margin: 8px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .amount-label { font-size: 11px; font-weight: bold; color: #1f2937; }
+  .amount-value { font-size: 14px; font-weight: bold; color: #15803d; }
+  .stamp { 
+    text-align: center; 
+    border: 2px solid #15803d; 
+    border-radius: 50%; 
+    width: 50px; 
+    height: 50px; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    margin: 8px auto;
+    color: #15803d;
+    font-weight: bold;
+    font-size: 10px;
+    line-height: 1.2;
+  }
+  .footer { 
+    text-align: center; 
+    margin-top: 8px; 
+    padding-top: 6px; 
+    border-top: 1px dashed #d1d5db; 
+    color: #9ca3af; 
+    font-size: 9px;
+    line-height: 1.5;
+  }
+  @media print { 
+    body { width: 80mm; margin: 0; padding: 5mm; }
+    @page { size: 80mm auto; margin: 0; }
+  }
 </style>
 </head>
 <body>
   <div class="header">
-    <div class="logo">Department of Biotechnology</div>
-    <div class="subtitle">Faculty of Life Sciences</div>
-    <div class="subtitle">Federal University Lokoja, Kogi State</div>
+    <div class="logos">
+      ${fulLogo ? `<img src="${fulLogo}" class="logo-img" alt="FUL Logo">` : ''}
+      ${deptLogo ? `<img src="${deptLogo}" class="logo-img" alt="Dept Logo">` : ''}
+    </div>
+    <div class="dept-name">${deptName}</div>
+    <div class="uni-name">${uniName}</div>
   </div>
 
-  <div class="receipt-title">DEPARTMENTAL DUES PAYMENT RECEIPT</div>
-  <div class="receipt-number-wrap">
-    <div class="receipt-number">${r.receipt_number}</div>
+  <div class="receipt-title">Payment Receipt</div>
+  <div class="receipt-number">${r.receipt_number}</div>
+
+  <hr class="divider">
+
+  <div class="row">
+    <span class="label">Name</span>
+    <span class="value">${r.full_name}</span>
+  </div>
+  <div class="row">
+    <span class="label">Matric No</span>
+    <span class="value">${r.matric_number}</span>
+  </div>
+  <div class="row">
+    <span class="label">Level</span>
+    <span class="value">${r.level}</span>
+  </div>
+  <div class="row">
+    <span class="label">Session</span>
+    <span class="value">${r.academic_session}</span>
+  </div>
+  <div class="row">
+    <span class="label">Date</span>
+    <span class="value">${new Date(r.issued_at).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+  </div>
+  <div class="row">
+    <span class="label">Ref</span>
+    <span class="value" style="font-size:8px">${r.payment_reference}</span>
   </div>
 
-  <div class="details">
-    <div class="row">
-      <span class="label">Student Name</span>
-      <span class="value">${r.full_name}</span>
-    </div>
-    <div class="row">
-      <span class="label">Matric Number</span>
-      <span class="value">${r.matric_number}</span>
-    </div>
-    <div class="row">
-      <span class="label">Email Address</span>
-      <span class="value">${r.email}</span>
-    </div>
-    <div class="row">
-      <span class="label">Level</span>
-      <span class="value">${r.level}</span>
-    </div>
-    <div class="row">
-      <span class="label">Academic Session</span>
-      <span class="value">${r.academic_session}</span>
-    </div>
-    <div class="row">
-      <span class="label">Payment Reference</span>
-      <span class="value">${r.payment_reference}</span>
-    </div>
-    <div class="row">
-      <span class="label">Date Issued</span>
-      <span class="value">${new Date(r.issued_at).toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
-    </div>
-  </div>
+  <hr class="divider">
 
   <div class="amount-box">
-    <span class="amount-label">Total Amount Paid</span>
+    <span class="amount-label">TOTAL PAID</span>
     <span class="amount-value">₦${parseFloat(r.amount_paid).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span>
   </div>
 
-  <div class="stamp-wrap">
-    <div class="stamp">PAID ✓</div>
-    <p style="color:#6b7280; font-size:12px; margin-top:8px">Payment confirmed and verified</p>
+  <div style="display:flex;justify-content:center">
+    <div class="stamp">PAID<br>✓</div>
   </div>
 
   <div class="footer">
-    <p>Department of Biotechnology · Faculty of Life Sciences · Federal University Lokoja</p>
-    <p>This is an electronically generated receipt and is valid without a physical signature.</p>
-    <p>For enquiries: biotech@fulokoja.edu.ng</p>
+    <p>Departmental Dues Payment</p>
+    <p>This receipt is electronically generated</p>
+    <p>and is valid without a signature.</p>
   </div>
 
   <script>window.onload = function() { window.print(); }</script>
