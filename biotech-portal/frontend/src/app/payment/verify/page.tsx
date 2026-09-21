@@ -1,14 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
-import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
-import { api, getErrorMessage } from '@/lib/api';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+
+const API = process.env.NEXT_PUBLIC_API_URL || 'https://biotech-portal-backend.onrender.com/api';
 
 export default function PaymentVerifyPage() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const [status, setStatus] = useState<'loading' | 'success' | 'failed'>('loading');
   const [receipt, setReceipt] = useState<any>(null);
   const [error, setError] = useState('');
@@ -17,87 +16,103 @@ export default function PaymentVerifyPage() {
     const reference = searchParams.get('reference') || searchParams.get('trxref');
     if (!reference) {
       setStatus('failed');
-      setError('No payment reference found');
+      setError('No payment reference found.');
       return;
     }
 
-    api.payment.verify(reference)
-      .then((res) => {
-        setReceipt(res.data);
-        setStatus('success');
+    fetch(API + '/payment/verify?reference=' + reference)
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          setReceipt(data);
+          setStatus('success');
+        } else {
+          setStatus('failed');
+          setError(data.message || 'Payment verification failed.');
+        }
       })
-      .catch((err) => {
+      .catch(() => {
         setStatus('failed');
-        setError(getErrorMessage(err));
+        setError('Network error. Please check your receipt using your matric number.');
       });
   }, [searchParams]);
 
-  const formatCurrency = (v: number) =>
-    new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(v);
+  const fmt = (v: number) => new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(v);
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md text-center">
+    <div style={{ minHeight: '100vh', background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', fontFamily: 'Arial, sans-serif' }}>
+      <div style={{ background: 'white', borderRadius: '20px', padding: '32px', maxWidth: '480px', width: '100%', boxShadow: '0 4px 24px rgba(0,0,0,0.1)', textAlign: 'center' }}>
+
         {status === 'loading' && (
           <>
-            <Loader2 className="w-12 h-12 text-primary-600 animate-spin mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-800 mb-2">Verifying Payment...</h2>
-            <p className="text-gray-500">Please wait while we confirm your payment.</p>
+            <div style={{ width: '56px', height: '56px', border: '4px solid #15803d', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 20px' }} />
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            <h2 style={{ color: '#1f2937', fontSize: '20px', fontWeight: '700', margin: '0 0 8px' }}>Verifying Payment...</h2>
+            <p style={{ color: '#6b7280', fontSize: '14px', margin: 0 }}>Please wait while we confirm your payment.</p>
           </>
         )}
 
         {status === 'success' && receipt && (
           <>
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <CheckCircle className="w-8 h-8 text-green-600" />
+            {/* Success Icon */}
+            <div style={{ width: '64px', height: '64px', background: '#dcfce7', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: '28px' }}>
+              ✅
             </div>
-            <h2 className="text-xl font-bold text-gray-800 mb-1">Payment Successful!</h2>
-            <p className="text-gray-500 mb-6">Your dues payment has been confirmed.</p>
+            <h2 style={{ color: '#15803d', fontSize: '22px', fontWeight: '800', margin: '0 0 4px' }}>Payment Successful!</h2>
+            <p style={{ color: '#6b7280', fontSize: '13px', margin: '0 0 24px' }}>Your departmental dues have been received.</p>
 
-            <div className="bg-gray-50 rounded-xl p-4 text-left space-y-3 mb-6">
-              <div className="flex justify-between">
-                <span className="text-gray-500 text-sm">Receipt Number</span>
-                <span className="font-semibold text-gray-800 text-sm">{receipt.receipt_number}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500 text-sm">Amount Paid</span>
-                <span className="font-semibold text-gray-800 text-sm">{formatCurrency(receipt.amount)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500 text-sm">Session</span>
-                <span className="font-semibold text-gray-800 text-sm">{receipt.session_name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500 text-sm">Date</span>
-                <span className="font-semibold text-gray-800 text-sm">
-                  {new Date(receipt.created_at).toLocaleDateString('en-NG')}
-                </span>
+            {/* Receipt Card */}
+            <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '20px', textAlign: 'left', marginBottom: '20px' }}>
+              <p style={{ fontFamily: 'monospace', fontWeight: '700', color: '#15803d', fontSize: '16px', textAlign: 'center', margin: '0 0 16px', letterSpacing: '1px' }}>
+                {receipt.receipt_number}
+              </p>
+              {[
+                ['Name', receipt.full_name],
+                ['Matric No', receipt.matric_number],
+                ['Level', receipt.level],
+                ['Session', receipt.academic_session],
+                ['Date', new Date(receipt.issued_at).toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric' })],
+              ].map(([label, value]) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #d1fae5' }}>
+                  <span style={{ color: '#6b7280', fontSize: '13px' }}>{label}</span>
+                  <span style={{ fontWeight: '600', fontSize: '13px', color: '#1f2937', textAlign: 'right', maxWidth: '60%' }}>{value}</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0 0' }}>
+                <span style={{ fontWeight: '700', fontSize: '15px', color: '#1f2937' }}>Amount Paid</span>
+                <span style={{ fontWeight: '800', fontSize: '18px', color: '#15803d' }}>{fmt(parseFloat(receipt.amount_paid))}</span>
               </div>
             </div>
 
-            <a
-              href={api.payment.downloadReceiptUrl(receipt.receipt_number)}
+            {/* Download Button */}
+            
+              href={API + '/payment/receipt/download/' + receipt.receipt_number}
               target="_blank"
               rel="noopener noreferrer"
-              className="btn-primary w-full block mb-3"
+              style={{ display: 'block', background: '#15803d', color: 'white', textDecoration: 'none', padding: '14px', borderRadius: '10px', fontWeight: '700', fontSize: '15px', marginBottom: '12px' }}
             >
-              Download Receipt PDF
+              📄 Download Receipt
             </a>
-            <Link href="/" className="btn-secondary w-full block">
-              Back to Portal
+            <Link href="/" style={{ display: 'block', background: '#f3f4f6', color: '#374151', textDecoration: 'none', padding: '12px', borderRadius: '10px', fontWeight: '600', fontSize: '14px' }}>
+              Back to Home
             </Link>
+            <p style={{ color: '#9ca3af', fontSize: '11px', marginTop: '16px' }}>
+              You can always retrieve this receipt at <strong>Find Receipt</strong> using your matric number.
+            </p>
           </>
         )}
 
         {status === 'failed' && (
           <>
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <XCircle className="w-8 h-8 text-red-600" />
-            </div>
-            <h2 className="text-xl font-bold text-gray-800 mb-2">Verification Failed</h2>
-            <p className="text-gray-500 mb-6">{error || 'Unable to verify your payment. Please contact support.'}</p>
-            <Link href="/payment" className="btn-primary w-full block mb-3">Try Again</Link>
-            <Link href="/" className="btn-secondary w-full block">Back to Portal</Link>
+            <div style={{ fontSize: '48px', margin: '0 auto 16px' }}>❌</div>
+            <h2 style={{ color: '#dc2626', fontSize: '20px', fontWeight: '700', margin: '0 0 8px' }}>Verification Failed</h2>
+            <p style={{ color: '#6b7280', fontSize: '14px', margin: '0 0 24px' }}>{error}</p>
+            <Link href="/receipt" style={{ display: 'block', background: '#15803d', color: 'white', textDecoration: 'none', padding: '13px', borderRadius: '10px', fontWeight: '600', fontSize: '14px', marginBottom: '10px' }}>
+              Find Receipt by Matric Number
+            </Link>
+            <Link href="/payment" style={{ display: 'block', background: '#f3f4f6', color: '#374151', textDecoration: 'none', padding: '12px', borderRadius: '10px', fontWeight: '600', fontSize: '14px' }}>
+              Try Payment Again
+            </Link>
           </>
         )}
       </div>
