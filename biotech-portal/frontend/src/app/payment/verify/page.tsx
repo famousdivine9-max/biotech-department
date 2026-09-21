@@ -100,7 +100,7 @@ export default function PaymentVerifyPage() {
               You can always retrieve this receipt at <strong>Find Receipt</strong> using your matric number.
             </p>
           </>
-        )} 
+        )}
 
         {status === 'failed' && (
           <>
